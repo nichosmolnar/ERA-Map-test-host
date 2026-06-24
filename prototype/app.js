@@ -1,0 +1,393 @@
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbw3b8djL17TXpmKTzZtZiG8QLIJw5KEt4Hu6uc1FxJD1VQaaA5KYzJDmocyGXjdWhA/exec";
+const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
+const MAP_WIDTH = 975;
+const MAP_HEIGHT = 610;
+const PANEL_WIDTH_RATIO = 1 / 3;
+const MAP_PLACEHOLDER_FILL = "#e8e8e8";
+const ZOOM_DURATION = 750;
+
+function mapTransition(mapLayer) {
+  return mapLayer.transition().duration(ZOOM_DURATION).ease(d3.easeCubicInOut);
+}
+
+const ERA_TYPES = [
+  "No State ERA",
+  "Active Campaign",
+  "Ltd. Gender Equality Provisions",
+  "Full State ERA",
+  "Full State ERA + Provisions"
+];
+
+const ERA_COLORS = [
+  "#d9d9d9",
+  "#fd8d3c",
+  "#7fcdbb",
+  "#2c7fb8",
+  "#08589e"
+];
+
+const FILTER_BUTTON_ORDER = [...ERA_TYPES].reverse();
+
+const color = d3.scaleOrdinal()
+  .domain(ERA_TYPES)
+  .range(ERA_COLORS)
+  .unknown("#f0f0f0");
+
+const activeFilters = new Set();
+const mapUI = { lookup: null, tooltip: null, activeTab: "background", zoomOut: null, isZoomed: false };
+
+function fetchSheetJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `sheetCallback_${Date.now()}`;
+    const script = document.createElement("script");
+
+    window[callbackName] = (data) => {
+      delete window[callbackName];
+      script.remove();
+      resolve(data);
+    };
+
+    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${callbackName}`;
+    script.onerror = () => {
+      delete window[callbackName];
+      script.remove();
+      reject(new Error("Sheet JSONP fetch failed"));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+function countByCategory(stateData) {
+  const counts = Object.fromEntries(ERA_TYPES.map(t => [t, 0]));
+  stateData.forEach(d => {
+    const type = d["State ERA type"];
+    if (type in counts) counts[type] += 1;
+  });
+  return counts;
+}
+
+function textColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#222" : "#fff";
+}
+
+function getEraType(row) {
+  return row ? row["State ERA type"] : null;
+}
+
+function renderMap(us) {
+  const states = topojson.feature(us, us.objects.states);
+  const borders = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
+  const path = d3.geoPath();
+
+  const svg = d3.select("#map")
+    .append("svg")
+    .attr("viewBox", [0, 0, MAP_WIDTH, MAP_HEIGHT]);
+
+  const mapLayer = svg.append("g").attr("class", "map-layer");
+
+  const statePaths = mapLayer.append("g")
+    .selectAll("path")
+    .data(states.features)
+    .join("path")
+    .attr("class", "state")
+    .attr("fill", MAP_PLACEHOLDER_FILL)
+    .attr("d", path);
+
+  mapLayer.append("path")
+    .datum(borders)
+    .attr("fill", "none")
+    .attr("stroke", "#fff")
+    .attr("stroke-linejoin", "round")
+    .attr("d", path);
+
+  attachZoom(svg, mapLayer, statePaths, path);
+
+  return { statePaths, svg };
+}
+
+function initStatePanel() {
+  const panel = d3.select("#state-panel");
+
+  panel.selectAll(".state-panel-tab")
+    .on("click", function () {
+      const tab = this.dataset.tab;
+      mapUI.activeTab = tab;
+      panel.selectAll(".state-panel-tab")
+        .classed("active", function () { return this.dataset.tab === tab; });
+      panel.selectAll(".state-panel-pane")
+        .classed("active", function () { return this.dataset.pane === tab; });
+    });
+
+  panel.select(".state-panel-close")
+    .on("click", (event) => {
+      event.stopPropagation();
+      if (mapUI.zoomOut) mapUI.zoomOut();
+    });
+
+  panel.on("click", (event) => event.stopPropagation());
+
+  return panel;
+}
+
+function setPaneContent(selection, text, emptyMessage) {
+  selection.selectAll("*").remove();
+  if (text) {
+    selection.text(text);
+  } else {
+    selection.append("em").text(emptyMessage);
+  }
+}
+
+function showStatePanel(row) {
+  if (!row) return;
+
+  const panel = d3.select("#state-panel");
+  const era = row["State ERA type"];
+  const background = (row.Background || "").trim();
+  const language = (row.Language || "").trim();
+
+  panel.select(".state-panel-name").text(row.State);
+  panel.select(".state-panel-status").text(era || "Unknown");
+  panel.select(".state-panel-swatch").style("background-color", color(era));
+
+  setPaneContent(
+    panel.select('[data-pane="background"]'),
+    background,
+    "No background available."
+  );
+  setPaneContent(
+    panel.select('[data-pane="language"]'),
+    language,
+    "No language available."
+  );
+
+  panel.selectAll(".state-panel-tab")
+    .classed("active", function () { return this.dataset.tab === mapUI.activeTab; });
+  panel.selectAll(".state-panel-pane")
+    .classed("active", function () { return this.dataset.pane === mapUI.activeTab; });
+
+  panel.classed("visible", false).attr("aria-hidden", "true");
+  requestAnimationFrame(() => {
+    panel.classed("visible", true).attr("aria-hidden", null);
+  });
+}
+
+function clearStatePanel() {
+  const panel = d3.select("#state-panel");
+  panel.select(".state-panel-name").text("");
+  panel.select(".state-panel-status").text("");
+  panel.select(".state-panel-swatch").style("background-color", null);
+  panel.select('[data-pane="background"]').selectAll("*").remove();
+  panel.select('[data-pane="language"]').selectAll("*").remove();
+}
+
+function hideStatePanel() {
+  d3.select("#state-panel").classed("visible", false).attr("aria-hidden", "true");
+  clearStatePanel();
+}
+
+function applyMapColors(statePaths, lookup) {
+  statePaths.attr("fill", d => color(getEraType(lookup.get(d.properties.name))));
+}
+
+function updateMapOpacity(statePaths, lookup) {
+  const filtering = activeFilters.size > 0;
+  statePaths.attr("opacity", d => {
+    const era = getEraType(lookup.get(d.properties.name));
+    if (!filtering) return 1;
+    return era && activeFilters.has(era) ? 1 : 0.15;
+  });
+}
+
+function renderFilters(counts, statePaths, lookup) {
+  const filters = d3.select("#filters")
+    .selectAll("button")
+    .data(FILTER_BUTTON_ORDER)
+    .join("button")
+    .attr("class", "filter-btn")
+    .attr("type", "button")
+    .attr("aria-hidden", null)
+    .style("background-color", d => color(d))
+    .style("color", d => textColor(color(d)))
+    .classed("active", d => activeFilters.has(d))
+    .classed("filter-btn--placeholder", false)
+    .on("click", (_, category) => {
+      if (activeFilters.has(category)) {
+        activeFilters.delete(category);
+      } else {
+        activeFilters.add(category);
+      }
+      filters.classed("active", d => activeFilters.has(d));
+      updateMapOpacity(statePaths, lookup);
+    });
+
+  filters.html(d => `
+    <span class="label">${d}</span>
+    <span class="count">${counts[d]} state${counts[d] === 1 ? "" : "s"}</span>
+  `);
+}
+
+function createTooltip() {
+  return d3.select("#map-frame")
+    .append("div")
+    .attr("class", "tooltip");
+}
+
+function showTooltip(tooltip, event, row) {
+  if (!row || mapUI.isZoomed || d3.select("#state-panel").classed("visible")) {
+    hideTooltip(tooltip);
+    return;
+  }
+
+  const era = row["State ERA type"];
+  const background = (row.Background || "").trim();
+  const swatchColor = color(era);
+
+  tooltip.html(`
+    <div class="tooltip-name">${row.State}</div>
+    <div class="tooltip-category">
+      <span class="tooltip-swatch" style="background-color:${swatchColor}"></span>
+      <span>${era || "Unknown"}</span>
+    </div>
+    ${background
+      ? `<div class="tooltip-background">${background}</div>`
+      : `<div class="tooltip-background"><em>No background available.</em></div>`}
+  `);
+
+  tooltip.classed("visible", true).style("visibility", "hidden");
+
+  const mapFrame = document.getElementById("map-frame");
+  const [x, y] = d3.pointer(event, mapFrame);
+  const offset = 12;
+  const tipNode = tooltip.node();
+  const tipWidth = tipNode.offsetWidth;
+  const tipHeight = tipNode.offsetHeight;
+  const maxX = mapFrame.clientWidth - tipWidth - 4;
+  const maxY = mapFrame.clientHeight - tipHeight - 4;
+
+  tooltip
+    .style("left", `${Math.min(x + offset, maxX)}px`)
+    .style("top", `${Math.min(y + offset, maxY)}px`)
+    .style("visibility", "visible");
+}
+
+function hideTooltip(tooltip) {
+  tooltip
+    .classed("visible", false)
+    .style("visibility", null)
+    .style("left", null)
+    .style("top", null)
+    .html("");
+}
+
+function zoomToState(mapLayer, path, feature, panelOpen) {
+  const [[x0, y0], [x1, y1]] = path.bounds(feature);
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const x = (x0 + x1) / 2;
+  const y = (y0 + y1) / 2;
+  const viewWidth = panelOpen ? MAP_WIDTH * (1 - PANEL_WIDTH_RATIO) : MAP_WIDTH;
+  const scale = Math.min(8, 0.9 / Math.max(dx / viewWidth, dy / MAP_HEIGHT));
+  const translate = [viewWidth / 2 - scale * x, MAP_HEIGHT / 2 - scale * y];
+
+  mapTransition(mapLayer)
+    .attr("transform", `translate(${translate}) scale(${scale})`);
+}
+
+function resetZoom(mapLayer, onEnd) {
+  const transition = mapTransition(mapLayer)
+    .attr("transform", "translate(0, 0) scale(1)");
+  if (onEnd) transition.on("end", onEnd);
+}
+
+function attachZoom(svg, mapLayer, statePaths, path) {
+  let zoomedState = null;
+
+  function zoomOut() {
+    zoomedState = null;
+    hideStatePanel();
+    if (mapUI.tooltip) hideTooltip(mapUI.tooltip);
+    resetZoom(mapLayer, () => {
+      mapUI.isZoomed = false;
+    });
+  }
+
+  function zoomIn(d) {
+    zoomedState = d;
+    mapUI.isZoomed = true;
+    const row = mapUI.lookup ? mapUI.lookup.get(d.properties.name) : null;
+    if (mapUI.tooltip) hideTooltip(mapUI.tooltip);
+    showStatePanel(row);
+    zoomToState(mapLayer, path, d, true);
+  }
+
+  statePaths.on("click", (event, d) => {
+    event.stopPropagation();
+    if (zoomedState) {
+      zoomOut();
+      return;
+    }
+    zoomIn(d);
+  });
+
+  svg.on("click", () => {
+    if (zoomedState) zoomOut();
+  });
+
+  mapUI.zoomOut = zoomOut;
+}
+
+function attachTooltip(statePaths, lookup, tooltip) {
+  statePaths
+    .on("click.zoom", () => hideTooltip(tooltip))
+    .on("mouseenter", (event, d) => {
+      showTooltip(tooltip, event, lookup.get(d.properties.name));
+    })
+    .on("mousemove", (event, d) => {
+      showTooltip(tooltip, event, lookup.get(d.properties.name));
+    })
+    .on("mouseleave", () => {
+      hideTooltip(tooltip);
+    });
+
+  d3.select("#map").on("mouseleave", () => hideTooltip(tooltip));
+}
+
+function hideMapLoading() {
+  d3.select("#map-loading").classed("hidden", true);
+}
+
+function applySheetData(stateData, statePaths, tooltip) {
+  console.log("Sheet data:", stateData);
+
+  const lookup = new Map(stateData.map(d => [d.State, d]));
+  const counts = countByCategory(stateData);
+
+  mapUI.lookup = lookup;
+  mapUI.tooltip = tooltip;
+
+  applyMapColors(statePaths, lookup);
+  renderFilters(counts, statePaths, lookup);
+  attachTooltip(statePaths, lookup, tooltip);
+  hideMapLoading();
+}
+
+initStatePanel();
+
+d3.json(TOPO_URL)
+  .then(us => {
+    const { statePaths } = renderMap(us);
+    const tooltip = createTooltip();
+    mapUI.tooltip = tooltip;
+
+    fetchSheetJsonp(SHEET_DATA_URL)
+      .then(stateData => applySheetData(stateData, statePaths, tooltip))
+      .catch(err => {
+        console.error("Failed to load sheet data:", err);
+        hideMapLoading();
+      });
+  })
+  .catch(err => console.error("Failed to load map:", err));

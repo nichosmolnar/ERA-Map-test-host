@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<!-- Squarespace: paste into a Code Block and set display mode to HTML (not Markdown). -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>USA Map Prototype</title>
+  <style>
+    body {
+      margin: 0;
+      background: #fff;
+      font-family: system-ui, sans-serif;
+    }
+
+    #viz {
+      max-width: 975px;
+      margin: 0 auto;
+      padding: 16px;
+      position: relative;
+    }
+
+    #filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .filter-btn {
+      border: 2px solid transparent;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1.3;
+      text-align: left;
+      min-width: 140px;
+      min-height: 54px;
+      box-sizing: border-box;
+      transition: opacity 0.2s, border-color 0.2s, background-color 0.3s;
+    }
+
+    .filter-btn--placeholder {
+      background: #ebebeb;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .filter-btn.active {
+      border-color: #000;
+    }
+
+    .filter-btn .label {
+      display: block;
+      font-weight: 600;
+    }
+
+    .filter-btn .count {
+      display: block;
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    #map-frame {
+      position: relative;
+      border: 1px solid #000;
+      aspect-ratio: 975 / 610;
+      overflow: hidden;
+    }
+
+    #map-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.85);
+      font-size: 14px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    #map-loading.hidden {
+      display: none;
+    }
+
+    #map svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+    }
+
+    #map path.state {
+      transition: fill 0.3s, opacity 0.25s;
+      cursor: pointer;
+    }
+
+    .tooltip {
+      position: absolute;
+      display: none;
+      visibility: hidden;
+      border: 2px solid #000;
+      background: #fff;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      max-width: 280px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .tooltip.visible {
+      display: block;
+      visibility: visible;
+    }
+
+    .tooltip-name {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .tooltip-category {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tooltip-swatch {
+      width: 14px;
+      height: 14px;
+      border: 1px solid #000;
+      flex-shrink: 0;
+    }
+
+    .tooltip-background {
+      font-size: 12px;
+      color: #333;
+    }
+
+    #state-panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 33.333%;
+      height: 100%;
+      box-sizing: border-box;
+      border-left: 2px solid #000;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      line-height: 1.4;
+      z-index: 6;
+      transform: translateX(100%);
+      transition: transform 750ms cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+    }
+
+    #state-panel.visible {
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    .state-panel-header {
+      position: relative;
+      padding: 14px 40px 14px 14px;
+      border-bottom: 1px solid #000;
+    }
+
+    .state-panel-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      border: 2px solid #000;
+      background: #fff;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .state-panel-name {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .state-panel-category {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .state-panel-swatch {
+      width: 14px;
+      height: 14px;
+      border: 1px solid #000;
+      flex-shrink: 0;
+    }
+
+    .state-panel-tabs {
+      display: flex;
+      border-bottom: 1px solid #000;
+    }
+
+    .state-panel-tab {
+      flex: 1;
+      border: none;
+      border-right: 1px solid #000;
+      background: #ebebeb;
+      padding: 10px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .state-panel-tab:last-child {
+      border-right: none;
+    }
+
+    .state-panel-tab.active {
+      background: #fff;
+      border-bottom: 2px solid #000;
+      margin-bottom: -1px;
+    }
+
+    .state-panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+    }
+
+    .state-panel-pane {
+      display: none;
+      font-size: 12px;
+      color: #333;
+    }
+
+    .state-panel-pane.active {
+      display: block;
+    }
+
+    .state-panel-pane em {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div id="viz">
+    <div id="filters">
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+    </div>
+    <div id="map-frame">
+      <div id="map-loading">Map loading</div>
+      <div id="map"></div>
+      <div id="state-panel" aria-hidden="true">
+        <div class="state-panel-header">
+          <button type="button" class="state-panel-close" aria-label="Close">×</button>
+          <div class="state-panel-name"></div>
+          <div class="state-panel-category">
+            <span class="state-panel-swatch"></span>
+            <span class="state-panel-status"></span>
+          </div>
+        </div>
+        <div class="state-panel-tabs">
+          <button type="button" class="state-panel-tab active" data-tab="background">Background</button>
+          <button type="button" class="state-panel-tab" data-tab="language">Language</button>
+        </div>
+        <div class="state-panel-content">
+          <div class="state-panel-pane active" data-pane="background"></div>
+          <div class="state-panel-pane" data-pane="language"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <script src="app.js"></script>
+</body>
+</html>
