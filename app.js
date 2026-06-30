@@ -13,28 +13,38 @@ function mapTransition(mapLayer) {
 const ERA_TYPES = [
   "No State ERA",
   "Active Campaign",
-  "Ltd. Gender Equality Provisions",
+  "Limited Gender Equality Provisions",
   "Full State ERA",
   "Full State ERA + Provisions"
 ];
 
-const ERA_COLORS = [
-  "#d9d9d9",
-  "#fd8d3c",
-  "#7fcdbb",
-  "#2c7fb8",
-  "#08589e"
-];
+const COLOR_PALETTES = {
+  current: ["#c4c4c4", "#ffb239", "#46a0d6", "#2f3a72", "#209f57"],
+  option1: ["#F5ECC2", "#B7C2A9", "#D6B43E", "#064F6E", "#C53C69"],
+  option2: ["#E4E4E4", "#C19F2C", "#C3CD9D", "#437742", "#0D1C43"],
+  option3: ["#A8A8A8", "#FDBF68", "#C16B27", "#A5C8D1", "#064F6E"],
+  option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"]
+};
+
+const PALETTE_LABELS = {
+  current: "Current",
+  option1: "Option 1",
+  option2: "Option 2",
+  option3: "Option 3",
+  option4: "Option 4"
+};
+
+let activePaletteKey = "current";
 
 const FILTER_BUTTON_ORDER = [...ERA_TYPES].reverse();
 
 const color = d3.scaleOrdinal()
   .domain(ERA_TYPES)
-  .range(ERA_COLORS)
+  .range(COLOR_PALETTES.current)
   .unknown("#f0f0f0");
 
 const activeFilters = new Set();
-const mapUI = { lookup: null, tooltip: null, activeTab: "background", zoomOut: null, isZoomed: false };
+const mapUI = { lookup: null, tooltip: null, statePaths: null, activeTab: "background", zoomOut: null, isZoomed: false };
 
 function fetchSheetJsonp(url) {
   return new Promise((resolve, reject) => {
@@ -191,6 +201,47 @@ function hideStatePanel() {
 
 function applyMapColors(statePaths, lookup) {
   statePaths.attr("fill", d => color(getEraType(lookup.get(d.properties.name))));
+}
+
+function applyPalette(key) {
+  const palette = COLOR_PALETTES[key];
+  if (!palette) return;
+
+  activePaletteKey = key;
+  color.range(palette);
+
+  if (mapUI.statePaths && mapUI.lookup) {
+    applyMapColors(mapUI.statePaths, mapUI.lookup);
+  }
+
+  d3.select("#filters")
+    .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
+    .style("background-color", d => color(d))
+    .style("color", d => textColor(color(d)));
+
+  const panel = d3.select("#state-panel");
+  if (panel.classed("visible")) {
+    const status = panel.select(".state-panel-status").text();
+    if (status) {
+      panel.select(".state-panel-swatch").style("background-color", color(status));
+    }
+  }
+}
+
+function initPaletteSelector() {
+  const select = d3.select("#palette-select");
+
+  select.selectAll("option")
+    .data(Object.keys(COLOR_PALETTES))
+    .join("option")
+    .attr("value", d => d)
+    .text(d => PALETTE_LABELS[d]);
+
+  select.property("value", activePaletteKey);
+
+  select.on("change", function () {
+    applyPalette(this.value);
+  });
 }
 
 function updateMapOpacity(statePaths, lookup) {
@@ -380,6 +431,8 @@ initStatePanel();
 d3.json(TOPO_URL)
   .then(us => {
     const { statePaths } = renderMap(us);
+    mapUI.statePaths = statePaths;
+    initPaletteSelector();
     const tooltip = createTooltip();
     mapUI.tooltip = tooltip;
 

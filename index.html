@@ -4,12 +4,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>USA Map Prototype</title>
+  <title>ERA Map Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Teachers:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body {
       margin: 0;
       background: #fff;
-      font-family: system-ui, sans-serif;
+      font-family: "Teachers", sans-serif;
     }
 
     #viz {
@@ -252,6 +255,22 @@
     .state-panel-pane em {
       color: #666;
     }
+
+    #palette-selector {
+      margin-top: 12px;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    #palette-selector label {
+      margin-right: 8px;
+    }
+
+    #palette-select {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 4px 8px;
+    }
   </style>
 </head>
 <body>
@@ -284,6 +303,10 @@
           <div class="state-panel-pane" data-pane="language"></div>
         </div>
       </div>
+    </div>
+    <div id="palette-selector">
+      <label for="palette-select">Color palette</label>
+      <select id="palette-select" aria-label="Color palette"></select>
     </div>
   </div>
 
