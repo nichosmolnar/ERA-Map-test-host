@@ -23,15 +23,30 @@ const COLOR_PALETTES = {
   option1: ["#F5ECC2", "#B7C2A9", "#D6B43E", "#064F6E", "#C53C69"],
   option2: ["#E4E4E4", "#C19F2C", "#C3CD9D", "#437742", "#0D1C43"],
   option3: ["#A8A8A8", "#FDBF68", "#C16B27", "#A5C8D1", "#064F6E"],
-  option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"]
+  option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"],
+  option5: ["#c4c4c4", "#E36A93", "#78CDD0", "#209f57", "rainbow"],
+
 };
+
+const RAINBOW_SENTINEL = "rainbow";
+const RAINBOW_GRADIENT_ID = "rainbow-gradient";
+const RAINBOW_STOPS = [
+  { offset: "0%", color: "#e05c5c" },
+  { offset: "20%", color: "#e89a4e" },
+  { offset: "40%", color: "#e6d05a" },
+  { offset: "60%", color: "#5fb877" },
+  { offset: "80%", color: "#5a8fd6" },
+  { offset: "100%", color: "#9a6bc9" }
+];
+const RAINBOW_CSS_GRADIENT = `linear-gradient(135deg, ${RAINBOW_STOPS.map(s => `${s.color} ${s.offset}`).join(", ")})`;
 
 const PALETTE_LABELS = {
   current: "Current",
   option1: "Option 1",
   option2: "Option 2",
   option3: "Option 3",
-  option4: "Option 4"
+  option4: "Option 4",
+  option5: "Option 5"
 };
 
 let activePaletteKey = "current";
@@ -77,6 +92,8 @@ function countByCategory(stateData) {
 }
 
 function textColor(hex) {
+  // The rainbow gradient is light overall, so use dark text for non-hex values.
+  if (!hex || !hex.startsWith("#")) return "#222";
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -87,6 +104,33 @@ function getEraType(row) {
   return row ? row["State ERA type"] : null;
 }
 
+function isRainbow(value) {
+  return value === RAINBOW_SENTINEL;
+}
+
+function svgFill(era) {
+  const value = color(era);
+  return isRainbow(value) ? `url(#${RAINBOW_GRADIENT_ID})` : value;
+}
+
+function applySwatchBackground(selection, value) {
+  if (isRainbow(value)) {
+    selection
+      .style("background-color", null)
+      .style("background-image", RAINBOW_CSS_GRADIENT);
+  } else {
+    selection
+      .style("background-image", null)
+      .style("background-color", value);
+  }
+}
+
+function swatchStyle(value) {
+  return isRainbow(value)
+    ? `background-image:${RAINBOW_CSS_GRADIENT}`
+    : `background-color:${value}`;
+}
+
 function renderMap(us) {
   const states = topojson.feature(us, us.objects.states);
   const borders = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
@@ -95,6 +139,20 @@ function renderMap(us) {
   const svg = d3.select("#map")
     .append("svg")
     .attr("viewBox", [0, 0, MAP_WIDTH, MAP_HEIGHT]);
+
+  const gradient = svg.append("defs")
+    .append("linearGradient")
+    .attr("id", RAINBOW_GRADIENT_ID)
+    .attr("x1", "0%")
+    .attr("y1", "0%")
+    .attr("x2", "100%")
+    .attr("y2", "100%");
+
+  gradient.selectAll("stop")
+    .data(RAINBOW_STOPS)
+    .join("stop")
+    .attr("offset", d => d.offset)
+    .attr("stop-color", d => d.color);
 
   const mapLayer = svg.append("g").attr("class", "map-layer");
 
@@ -168,7 +226,7 @@ function showStatePanel(row) {
 
   panel.select(".state-panel-name").text(row.State);
   panel.select(".state-panel-status").text(era || "Unknown");
-  panel.select(".state-panel-swatch").style("background-color", color(era));
+  applySwatchBackground(panel.select(".state-panel-swatch"), color(era));
 
   setPaneContent(
     panel.select('[data-pane="review"]'),
@@ -196,7 +254,9 @@ function clearStatePanel() {
   const panel = d3.select("#state-panel");
   panel.select(".state-panel-name").text("");
   panel.select(".state-panel-status").text("");
-  panel.select(".state-panel-swatch").style("background-color", null);
+  panel.select(".state-panel-swatch")
+    .style("background-color", null)
+    .style("background-image", null);
   panel.select('[data-pane="review"]').selectAll("*").remove();
   panel.select('[data-pane="cases"]').selectAll("*").remove();
 }
@@ -220,7 +280,7 @@ function hideStatePanel() {
 }
 
 function applyMapColors(statePaths, lookup) {
-  statePaths.attr("fill", d => color(getEraType(lookup.get(d.properties.name))));
+  statePaths.attr("fill", d => svgFill(getEraType(lookup.get(d.properties.name))));
 }
 
 function applyPalette(key) {
@@ -236,14 +296,16 @@ function applyPalette(key) {
 
   d3.select("#filters")
     .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
-    .style("background-color", d => color(d))
+    .each(function (d) {
+      applySwatchBackground(d3.select(this), color(d));
+    })
     .style("color", d => textColor(color(d)));
 
   const panel = d3.select("#state-panel");
   if (panel.classed("visible")) {
     const status = panel.select(".state-panel-status").text();
     if (status) {
-      panel.select(".state-panel-swatch").style("background-color", color(status));
+      applySwatchBackground(panel.select(".state-panel-swatch"), color(status));
     }
   }
 }
@@ -281,7 +343,9 @@ function renderFilters(counts, statePaths, lookup) {
     .attr("class", "filter-btn")
     .attr("type", "button")
     .attr("aria-hidden", null)
-    .style("background-color", d => color(d))
+    .each(function (d) {
+      applySwatchBackground(d3.select(this), color(d));
+    })
     .style("color", d => textColor(color(d)))
     .classed("active", d => activeFilters.has(d))
     .classed("filter-btn--placeholder", false)
@@ -315,12 +379,11 @@ function showTooltip(tooltip, event, row) {
 
   const era = row["State ERA type"];
   const hover = (row.HOVER || "").trim();
-  const swatchColor = color(era);
 
   tooltip.html(`
     <div class="tooltip-name">${row.State}</div>
     <div class="tooltip-category">
-      <span class="tooltip-swatch" style="background-color:${swatchColor}"></span>
+      <span class="tooltip-swatch" style="${swatchStyle(color(era))}"></span>
       <span>${era || "Unknown"}</span>
     </div>
     ${hover
