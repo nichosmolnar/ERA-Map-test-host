@@ -1,4 +1,4 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbw3b8djL17TXpmKTzZtZiG8QLIJw5KEt4Hu6uc1FxJD1VQaaA5KYzJDmocyGXjdWhA/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbz78SJdxcvR4p7zjgKB8xyB4MF85pifCbUPB0Q_YpyCajKDDK4PVwehDkF64M4HesHbIg/exec";
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
 const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
@@ -12,10 +12,10 @@ function mapTransition(mapLayer) {
 
 const ERA_TYPES = [
   "No State ERA",
-  "Active Campaign",
-  "Limited Gender Equality Provisions",
+  "Ongoing Campaign",
+  "Ltd. Gender Equality Provisions",
   "Full State ERA",
-  "Full State ERA + Provisions"
+  "Expanded ERA"
 ];
 
 const COLOR_PALETTES = {
@@ -44,7 +44,7 @@ const color = d3.scaleOrdinal()
   .unknown("#f0f0f0");
 
 const activeFilters = new Set();
-const mapUI = { lookup: null, tooltip: null, statePaths: null, activeTab: "background", zoomOut: null, isZoomed: false };
+const mapUI = { lookup: null, tooltip: null, statePaths: null, activeTab: "review", zoomOut: null, isZoomed: false };
 
 function fetchSheetJsonp(url) {
   return new Promise((resolve, reject) => {
@@ -151,27 +151,34 @@ function setPaneContent(selection, text, emptyMessage) {
   }
 }
 
+let panelClearTimer = null;
+
 function showStatePanel(row) {
   if (!row) return;
 
+  if (panelClearTimer) {
+    clearTimeout(panelClearTimer);
+    panelClearTimer = null;
+  }
+
   const panel = d3.select("#state-panel");
   const era = row["State ERA type"];
-  const background = (row.Background || "").trim();
-  const language = (row.Language || "").trim();
+  const review = (row["Federal Standard of Review"] || "").trim();
+  const cases = (row["Sex Equality Cases"] || "").trim();
 
   panel.select(".state-panel-name").text(row.State);
   panel.select(".state-panel-status").text(era || "Unknown");
   panel.select(".state-panel-swatch").style("background-color", color(era));
 
   setPaneContent(
-    panel.select('[data-pane="background"]'),
-    background,
-    "No background available."
+    panel.select('[data-pane="review"]'),
+    review,
+    "No federal standard of review information available."
   );
   setPaneContent(
-    panel.select('[data-pane="language"]'),
-    language,
-    "No language available."
+    panel.select('[data-pane="cases"]'),
+    cases,
+    "No sex equality cases available."
   );
 
   panel.selectAll(".state-panel-tab")
@@ -190,13 +197,26 @@ function clearStatePanel() {
   panel.select(".state-panel-name").text("");
   panel.select(".state-panel-status").text("");
   panel.select(".state-panel-swatch").style("background-color", null);
-  panel.select('[data-pane="background"]').selectAll("*").remove();
-  panel.select('[data-pane="language"]').selectAll("*").remove();
+  panel.select('[data-pane="review"]').selectAll("*").remove();
+  panel.select('[data-pane="cases"]').selectAll("*").remove();
 }
 
 function hideStatePanel() {
+  const panelNode = document.getElementById("state-panel");
+
+  // Move focus out before aria-hidden, otherwise browsers block hiding a focused subtree.
+  if (panelNode.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+
   d3.select("#state-panel").classed("visible", false).attr("aria-hidden", "true");
-  clearStatePanel();
+
+  // Keep the content in place until the slide-out transition finishes.
+  if (panelClearTimer) clearTimeout(panelClearTimer);
+  panelClearTimer = setTimeout(() => {
+    panelClearTimer = null;
+    clearStatePanel();
+  }, ZOOM_DURATION);
 }
 
 function applyMapColors(statePaths, lookup) {
@@ -294,7 +314,7 @@ function showTooltip(tooltip, event, row) {
   }
 
   const era = row["State ERA type"];
-  const background = (row.Background || "").trim();
+  const hover = (row.HOVER || "").trim();
   const swatchColor = color(era);
 
   tooltip.html(`
@@ -303,9 +323,9 @@ function showTooltip(tooltip, event, row) {
       <span class="tooltip-swatch" style="background-color:${swatchColor}"></span>
       <span>${era || "Unknown"}</span>
     </div>
-    ${background
-      ? `<div class="tooltip-background">${background}</div>`
-      : `<div class="tooltip-background"><em>No background available.</em></div>`}
+    ${hover
+      ? `<div class="tooltip-background">${hover}</div>`
+      : `<div class="tooltip-background"><em>No information available.</em></div>`}
   `);
 
   tooltip.classed("visible", true).style("visibility", "hidden");
@@ -411,9 +431,22 @@ function hideMapLoading() {
   d3.select("#map-loading").classed("hidden", true);
 }
 
-function applySheetData(stateData, statePaths, tooltip) {
-  console.log("Sheet data:", stateData);
+function renderDatasetButtons(sheetData, activeName) {
+  d3.select("#dataset-buttons")
+    .selectAll("button")
+    .data(Object.keys(sheetData))
+    .join("button")
+    .attr("class", "dataset-btn")
+    .attr("type", "button")
+    .classed("active", d => d === activeName)
+    .text(d => d);
+}
 
+function applySheetData(sheetData, statePaths, tooltip) {
+  console.log("Sheet data:", sheetData);
+
+  const stateData = sheetData["State ERAs"];
+  renderDatasetButtons(sheetData, "State ERAs");
   const lookup = new Map(stateData.map(d => [d.State, d]));
   const counts = countByCategory(stateData);
 
