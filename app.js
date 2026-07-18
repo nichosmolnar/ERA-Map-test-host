@@ -524,7 +524,14 @@ function applySheetData(sheetData, statePaths, tooltip) {
 
 initStatePanel();
 
-d3.json(TOPO_URL)
+// Start sheet fetch immediately so it overlaps topology download + map render.
+const sheetPromise = fetchSheetJsonp(SHEET_DATA_URL);
+
+fetch(TOPO_URL)
+  .then(res => {
+    if (!res.ok) throw new Error(`Map topology HTTP ${res.status}`);
+    return res.json();
+  })
   .then(us => {
     const { statePaths } = renderMap(us);
     mapUI.statePaths = statePaths;
@@ -532,7 +539,7 @@ d3.json(TOPO_URL)
     const tooltip = createTooltip();
     mapUI.tooltip = tooltip;
 
-    fetchSheetJsonp(SHEET_DATA_URL)
+    return sheetPromise
       .then(stateData => applySheetData(stateData, statePaths, tooltip))
       .catch(err => {
         console.error("Failed to load sheet data:", err);
