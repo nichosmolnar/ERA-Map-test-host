@@ -5,6 +5,11 @@ const MAP_HEIGHT = 610;
 const PANEL_WIDTH_RATIO = 1 / 3;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
 const ZOOM_DURATION = 750;
+const MOBILE_LAYOUT_MQ = "(max-width: 700px)";
+
+function isMobileLayout() {
+  return window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+}
 
 function mapTransition(mapLayer) {
   return mapLayer.transition().duration(ZOOM_DURATION).ease(d3.easeCubicInOut);
@@ -59,7 +64,16 @@ const color = d3.scaleOrdinal()
   .unknown("#f0f0f0");
 
 const activeFilters = new Set();
-const mapUI = { lookup: null, tooltip: null, statePaths: null, activeTab: "review", zoomOut: null, isZoomed: false };
+const mapUI = {
+  lookup: null,
+  tooltip: null,
+  statePaths: null,
+  outlineLayer: null,
+  path: null,
+  activeTab: "review",
+  zoomOut: null,
+  isZoomed: false
+};
 
 function fetchSheetJsonp(url) {
   return new Promise((resolve, reject) => {
@@ -125,6 +139,16 @@ function applySwatchBackground(selection, value) {
   }
 }
 
+function applyFilterButtonColor(selection, value) {
+  const fill = isRainbow(value) ? RAINBOW_CSS_GRADIENT : value;
+  selection
+    .style("--btn-fill", fill)
+    .style("--btn-on-fill-text", textColor(value))
+    .style("background-color", null)
+    .style("background-image", null)
+    .style("color", null);
+}
+
 function swatchStyle(value) {
   return isRainbow(value)
     ? `background-image:${RAINBOW_CSS_GRADIENT}`
@@ -166,14 +190,33 @@ function renderMap(us) {
 
   mapLayer.append("path")
     .datum(borders)
+    .attr("class", "state-borders")
     .attr("fill", "none")
     .attr("stroke", "#fff")
     .attr("stroke-linejoin", "round")
     .attr("d", path);
 
+  const outlineLayer = mapLayer.append("g").attr("class", "state-outline");
+  mapUI.outlineLayer = outlineLayer;
+  mapUI.path = path;
+
   attachZoom(svg, mapLayer, statePaths, path);
 
   return { statePaths, svg };
+}
+
+function setStateOutline(feature) {
+  if (!mapUI.outlineLayer || !mapUI.path) return;
+
+  mapUI.outlineLayer.selectAll("path")
+    .data(feature ? [feature] : [])
+    .join("path")
+    .attr("fill", "none")
+    .attr("stroke", "#000")
+    .attr("stroke-width", 1)
+    .attr("stroke-linejoin", "round")
+    .attr("pointer-events", "none")
+    .attr("d", mapUI.path);
 }
 
 function initStatePanel() {
@@ -297,9 +340,8 @@ function applyPalette(key) {
   d3.select("#filters")
     .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
     .each(function (d) {
-      applySwatchBackground(d3.select(this), color(d));
-    })
-    .style("color", d => textColor(color(d)));
+      applyFilterButtonColor(d3.select(this), color(d));
+    });
 
   const panel = d3.select("#state-panel");
   if (panel.classed("visible")) {
@@ -344,9 +386,8 @@ function renderFilters(counts, statePaths, lookup) {
     .attr("type", "button")
     .attr("aria-hidden", null)
     .each(function (d) {
-      applySwatchBackground(d3.select(this), color(d));
+      applyFilterButtonColor(d3.select(this), color(d));
     })
-    .style("color", d => textColor(color(d)))
     .classed("active", d => activeFilters.has(d))
     .classed("filter-btn--placeholder", false)
     .on("click", (_, category) => {
@@ -361,7 +402,7 @@ function renderFilters(counts, statePaths, lookup) {
 
   filters.html(d => `
     <span class="label">${d}</span>
-    <span class="count">${counts[d]} state${counts[d] === 1 ? "" : "s"}</span>
+    <span class="count">${counts[d]}</span>
   `);
 }
 
@@ -442,6 +483,7 @@ function attachZoom(svg, mapLayer, statePaths, path) {
 
   function zoomOut() {
     zoomedState = null;
+    setStateOutline(null);
     hideStatePanel();
     if (mapUI.tooltip) hideTooltip(mapUI.tooltip);
     resetZoom(mapLayer, () => {
@@ -454,8 +496,11 @@ function attachZoom(svg, mapLayer, statePaths, path) {
     mapUI.isZoomed = true;
     const row = mapUI.lookup ? mapUI.lookup.get(d.properties.name) : null;
     if (mapUI.tooltip) hideTooltip(mapUI.tooltip);
+    setStateOutline(d);
     showStatePanel(row);
-    zoomToState(mapLayer, path, d, true);
+    if (!isMobileLayout()) {
+      zoomToState(mapLayer, path, d, true);
+    }
   }
 
   statePaths.on("click", (event, d) => {
@@ -478,38 +523,31 @@ function attachTooltip(statePaths, lookup, tooltip) {
   statePaths
     .on("click.zoom", () => hideTooltip(tooltip))
     .on("mouseenter", (event, d) => {
+      if (!mapUI.isZoomed) setStateOutline(d);
       showTooltip(tooltip, event, lookup.get(d.properties.name));
     })
     .on("mousemove", (event, d) => {
       showTooltip(tooltip, event, lookup.get(d.properties.name));
     })
     .on("mouseleave", () => {
+      if (!mapUI.isZoomed) setStateOutline(null);
       hideTooltip(tooltip);
     });
 
-  d3.select("#map").on("mouseleave", () => hideTooltip(tooltip));
+  d3.select("#map").on("mouseleave", () => {
+    if (!mapUI.isZoomed) setStateOutline(null);
+    hideTooltip(tooltip);
+  });
 }
 
 function hideMapLoading() {
   d3.select("#map-loading").classed("hidden", true);
 }
 
-function renderDatasetButtons(sheetData, activeName) {
-  d3.select("#dataset-buttons")
-    .selectAll("button")
-    .data(Object.keys(sheetData))
-    .join("button")
-    .attr("class", "dataset-btn")
-    .attr("type", "button")
-    .classed("active", d => d === activeName)
-    .text(d => d);
-}
-
 function applySheetData(sheetData, statePaths, tooltip) {
   console.log("Sheet data:", sheetData);
 
   const stateData = sheetData["State ERAs"];
-  renderDatasetButtons(sheetData, "State ERAs");
   const lookup = new Map(stateData.map(d => [d.State, d]));
   const counts = countByCategory(stateData);
 
