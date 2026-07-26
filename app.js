@@ -430,6 +430,7 @@ function showTooltip(tooltip, event, row) {
     ${hover
       ? `<div class="tooltip-background">${hover}</div>`
       : `<div class="tooltip-background"><em>No information available.</em></div>`}
+    <div class="tooltip-cta">Click to learn more</div>
   `);
 
   tooltip.classed("visible", true).style("visibility", "hidden");

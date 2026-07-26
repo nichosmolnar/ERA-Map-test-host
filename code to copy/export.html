@@ -21,15 +21,23 @@
 
   <style>
     /* Squarespace strips <link> tags in Code Blocks; @import works here. */
-    @import url("https://fonts.googleapis.com/css2?family=Teachers:wght@400;500;600;700&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Teachers:wght@400;500;600;700&display=swap");
 
     /* Scope to #viz so Squarespace theme body fonts do not override. */
     #viz {
+      --font-size-base: 14px;
+      --font-size-lg: 16px;
+      --font-size-sm: 13px;
+      --font-size-xl: 21px;
+      --font-size-title: 24px;
+      --font-serif: "Libre Baskerville", "Times New Roman", Times, serif;
       max-width: 975px;
       margin: 0 auto;
       padding: 16px;
       position: relative;
       font-family: "Teachers", sans-serif;
+      font-size: var(--font-size-base);
+      line-height: 1.4;
       background: #fff;
     }
 
@@ -59,7 +67,7 @@
       padding: 7px 10px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 13px;
+      font-size: var(--font-size-lg);
       line-height: 1.3;
       text-align: left;
       min-width: 0;
@@ -149,7 +157,7 @@
       border-radius: 50%;
       background: var(--btn-fill);
       color: var(--btn-on-fill-text);
-      font-size: 12px;
+      font-size: var(--font-size-sm);
       font-weight: 600;
       line-height: 1;
       transition: background 0.2s ease, color 0.2s ease;
@@ -174,7 +182,7 @@
       align-items: center;
       justify-content: center;
       background: rgba(255, 255, 255, 0.85);
-      font-size: 14px;
+      font-size: var(--font-size-base);
       z-index: 5;
       pointer-events: none;
     }
@@ -199,24 +207,32 @@
       position: absolute;
       display: none;
       visibility: hidden;
+      box-sizing: border-box;
+      width: 360px;
+      height: 185px;
       border: 2px solid #000;
       background: #fff;
       padding: 10px 14px;
-      font-size: 13px;
+      font-size: var(--font-size-base);
       line-height: 1.4;
-      max-width: 280px;
       pointer-events: none;
       z-index: 10;
+      overflow: hidden;
+      flex-direction: column;
     }
 
     .tooltip.visible {
-      display: block;
+      display: flex;
       visibility: visible;
     }
 
     .tooltip-name {
-      font-weight: 600;
+      font-family: var(--font-serif);
+      font-size: var(--font-size-title);
+      font-weight: 700;
+      line-height: 1.2;
       margin-bottom: 6px;
+      flex-shrink: 0;
     }
 
     .tooltip-category {
@@ -224,6 +240,8 @@
       align-items: center;
       gap: 8px;
       margin-bottom: 8px;
+      flex-shrink: 0;
+      font-weight: 700;
     }
 
     .tooltip-swatch {
@@ -234,9 +252,22 @@
     }
 
     .tooltip-background {
-      font-size: 12px;
+      font-size: var(--font-size-base);
+      line-height: 1.4;
       color: #333;
-      white-space: pre-line;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      max-height: calc(var(--font-size-base) * 1.4 * 3);
+      flex: 0 0 auto;
+    }
+
+    .tooltip-cta {
+      margin-top: auto;
+      padding-top: 8px;
+      font-weight: 700;
+      flex-shrink: 0;
     }
 
     #state-panel {
@@ -250,7 +281,7 @@
       background: #fff;
       display: flex;
       flex-direction: column;
-      font-size: 14px;
+      font-size: var(--font-size-base);
       line-height: 1.4;
       z-index: 6;
       transform: translateX(100%);
@@ -277,7 +308,7 @@
       height: 28px;
       border: 2px solid #000;
       background: #fff;
-      font-size: 18px;
+      font-size: var(--font-size-xl);
       line-height: 1;
       cursor: pointer;
       font-family: inherit;
@@ -288,8 +319,10 @@
     }
 
     .state-panel-name {
-      font-weight: 600;
-      font-size: 15px;
+      font-family: var(--font-serif);
+      font-weight: 700;
+      font-size: var(--font-size-title);
+      line-height: 1.2;
       margin-bottom: 8px;
     }
 
@@ -319,7 +352,7 @@
       border-right: 1px solid #000;
       background: #ebebeb;
       padding: 10px 8px;
-      font-size: 12px;
+      font-size: var(--font-size-base);
       font-weight: 600;
       cursor: pointer;
       font-family: inherit;
@@ -342,7 +375,7 @@
 
     .state-panel-pane {
       display: none;
-      font-size: 12px;
+      font-size: var(--font-size-base);
       color: #333;
       white-space: pre-line;
     }
@@ -353,29 +386,6 @@
 
     .state-panel-pane em {
       color: #666;
-    }
-
-    #map-controls {
-      margin-top: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    #palette-selector {
-      text-align: left;
-      font-size: 13px;
-    }
-
-    #palette-selector label {
-      margin-right: 8px;
-    }
-
-    #palette-select {
-      font-family: inherit;
-      font-size: 13px;
-      padding: 4px 8px;
     }
 
     @media (max-width: 700px) {
@@ -424,12 +434,6 @@
           <div class="state-panel-pane active" data-pane="review"></div>
           <div class="state-panel-pane" data-pane="cases"></div>
         </div>
-      </div>
-    </div>
-    <div id="map-controls">
-      <div id="palette-selector">
-        <label for="palette-select">Color palette</label>
-        <select id="palette-select" aria-label="Color palette"></select>
       </div>
     </div>
   </div>
@@ -485,22 +489,11 @@
   ];
   const RAINBOW_CSS_GRADIENT = `linear-gradient(135deg, ${RAINBOW_STOPS.map(s => `${s.color} ${s.offset}`).join(", ")})`;
 
-  const PALETTE_LABELS = {
-    current: "Current",
-    option1: "Option 1",
-    option2: "Option 2",
-    option3: "Option 3",
-    option4: "Option 4",
-    option5: "Option 5"
-  };
-
-  let activePaletteKey = "current";
-
   const FILTER_BUTTON_ORDER = [...ERA_TYPES].reverse();
 
   const color = d3.scaleOrdinal()
     .domain(ERA_TYPES)
-    .range(COLOR_PALETTES.current)
+    .range(COLOR_PALETTES.option5)
     .unknown("#f0f0f0");
 
   const activeFilters = new Set();
@@ -766,48 +759,6 @@
     statePaths.attr("fill", d => svgFill(getEraType(lookup.get(d.properties.name))));
   }
 
-  function applyPalette(key) {
-    const palette = COLOR_PALETTES[key];
-    if (!palette) return;
-
-    activePaletteKey = key;
-    color.range(palette);
-
-    if (mapUI.statePaths && mapUI.lookup) {
-      applyMapColors(mapUI.statePaths, mapUI.lookup);
-    }
-
-    d3.select("#filters")
-      .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
-      .each(function (d) {
-        applyFilterButtonColor(d3.select(this), color(d));
-      });
-
-    const panel = d3.select("#state-panel");
-    if (panel.classed("visible")) {
-      const status = panel.select(".state-panel-status").text();
-      if (status) {
-        applySwatchBackground(panel.select(".state-panel-swatch"), color(status));
-      }
-    }
-  }
-
-  function initPaletteSelector() {
-    const select = d3.select("#palette-select");
-
-    select.selectAll("option")
-      .data(Object.keys(COLOR_PALETTES))
-      .join("option")
-      .attr("value", d => d)
-      .text(d => PALETTE_LABELS[d]);
-
-    select.property("value", activePaletteKey);
-
-    select.on("change", function () {
-      applyPalette(this.value);
-    });
-  }
-
   function updateMapOpacity(statePaths, lookup) {
     const filtering = activeFilters.size > 0;
     statePaths.attr("opacity", d => {
@@ -870,6 +821,7 @@
       ${hover
         ? `<div class="tooltip-background">${hover}</div>`
         : `<div class="tooltip-background"><em>No information available.</em></div>`}
+      <div class="tooltip-cta">Click to learn more</div>
     `);
 
     tooltip.classed("visible", true).style("visibility", "hidden");
@@ -1013,7 +965,6 @@
     .then(us => {
       const { statePaths } = renderMap(us);
       mapUI.statePaths = statePaths;
-      initPaletteSelector();
       const tooltip = createTooltip();
       mapUI.tooltip = tooltip;
 
