@@ -28,7 +28,6 @@
       gap: 8px;
       justify-content: flex-start;
       margin-bottom: 12px;
-      padding-bottom: 4px;
     }
 
     .filter-btn {
@@ -81,14 +80,13 @@
       bottom: 0;
       height: var(--frame-width);
       background: var(--btn-fill);
-      transition: height 0.2s ease, bottom 0.2s ease;
+      transition: height 0.2s ease;
       pointer-events: none;
       z-index: 0;
     }
 
     .filter-btn:hover:not(.active)::after {
       height: calc(var(--frame-width) + 4px);
-      bottom: -4px;
     }
 
     .filter-btn.active {
@@ -100,8 +98,7 @@
     }
 
     .filter-btn.active::after {
-      height: calc(100% + 4px);
-      bottom: -4px;
+      height: 100%;
     }
 
     .filter-btn--placeholder {
