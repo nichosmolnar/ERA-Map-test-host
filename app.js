@@ -4,6 +4,7 @@ const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
 const PANEL_WIDTH_RATIO = 1 / 3;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
+const RATIFIED_STATUS = "Ratified";
 const ZOOM_DURATION = 750;
 const MOBILE_LAYOUT_MQ = "(max-width: 700px)";
 
@@ -64,11 +65,14 @@ const color = d3.scaleOrdinal()
   .unknown("#f0f0f0");
 
 const activeFilters = new Set();
+let showFederalRatification = false;
 const mapUI = {
   lookup: null,
   tooltip: null,
   statePaths: null,
   outlineLayer: null,
+  ratificationOutline: null,
+  topology: null,
   path: null,
   activeTab: "review",
   zoomOut: null,
@@ -116,6 +120,10 @@ function textColor(hex) {
 
 function getEraType(row) {
   return row ? row["State ERA type"] : null;
+}
+
+function isFederallyRatified(row) {
+  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
 }
 
 function isRainbow(value) {
@@ -196,8 +204,19 @@ function renderMap(us) {
     .attr("stroke-linejoin", "round")
     .attr("d", path);
 
+  const ratificationOutline = mapLayer.append("path")
+    .attr("class", "ratification-outline")
+    .attr("fill", "none")
+    .attr("stroke", "#000")
+    .attr("stroke-width", 2)
+    .attr("stroke-linejoin", "round")
+    .attr("pointer-events", "none")
+    .attr("visibility", "hidden");
+
   const outlineLayer = mapLayer.append("g").attr("class", "state-outline");
   mapUI.outlineLayer = outlineLayer;
+  mapUI.ratificationOutline = ratificationOutline;
+  mapUI.topology = us;
   mapUI.path = path;
 
   attachZoom(svg, mapLayer, statePaths, path);
@@ -368,13 +387,55 @@ function initPaletteSelector() {
   });
 }
 
+function isStateFullyOpaque(row) {
+  if (showFederalRatification && !isFederallyRatified(row)) return false;
+  if (activeFilters.size === 0) return true;
+  const era = getEraType(row);
+  return !!(era && activeFilters.has(era));
+}
+
 function updateMapOpacity(statePaths, lookup) {
-  const filtering = activeFilters.size > 0;
   statePaths.attr("opacity", d => {
-    const era = getEraType(lookup.get(d.properties.name));
-    if (!filtering) return 1;
-    return era && activeFilters.has(era) ? 1 : 0.15;
+    return isStateFullyOpaque(lookup.get(d.properties.name)) ? 1 : 0.15;
   });
+  updateRatificationOutline();
+}
+
+function updateRatificationOutline() {
+  const outline = mapUI.ratificationOutline;
+  const us = mapUI.topology;
+  const lookup = mapUI.lookup;
+  if (!outline || !us || !mapUI.path) return;
+
+  if (!showFederalRatification || !lookup) {
+    outline.attr("d", null).attr("visibility", "hidden");
+    return;
+  }
+
+  const mesh = topojson.mesh(us, us.objects.states, (a, b) => {
+    const aOn = isStateFullyOpaque(lookup.get(a.properties.name));
+    if (a === b) return aOn;
+    const bOn = isStateFullyOpaque(lookup.get(b.properties.name));
+    return aOn !== bOn;
+  });
+
+  outline
+    .datum(mesh)
+    .attr("d", mapUI.path)
+    .attr("visibility", "visible");
+}
+
+function initRatificationToggle(statePaths, lookup) {
+  d3.select("#federal-ratification-toggle").on("change", function () {
+    showFederalRatification = this.checked;
+    updateMapOpacity(statePaths, lookup);
+  });
+}
+
+function showMapControls() {
+  d3.select("#map-controls")
+    .classed("ready", true)
+    .attr("aria-hidden", null);
 }
 
 function renderFilters(counts, statePaths, lookup) {
@@ -557,7 +618,9 @@ function applySheetData(sheetData, statePaths, tooltip) {
 
   applyMapColors(statePaths, lookup);
   renderFilters(counts, statePaths, lookup);
+  initRatificationToggle(statePaths, lookup);
   attachTooltip(statePaths, lookup, tooltip);
+  showMapControls();
   hideMapLoading();
 }
 
