@@ -1,10 +1,11 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbz78SJdxcvR4p7zjgKB8xyB4MF85pifCbUPB0Q_YpyCajKDDK4PVwehDkF64M4HesHbIg/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyeo7T6ZtDqJZcpjeink-etSuEXbv4V_IkebWNOPJKxPmHoqTEDvgWJoGxXPYokSSWyqg/exec";
+const SHEET_CACHE_KEY = "era-map-sheet-cache";
+const SHEET_CACHE_TTL_MS = 60 * 1000;
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
 const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
-const PANEL_WIDTH_RATIO = 1 / 3;
+const PANEL_WIDTH_RATIO = 0.5;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
-const RATIFIED_STATUS = "Ratified";
 const ZOOM_DURATION = 750;
 const MOBILE_LAYOUT_MQ = "(max-width: 700px)";
 
@@ -25,26 +26,28 @@ const ERA_TYPES = [
 ];
 
 const COLOR_PALETTES = {
-  current: ["#c4c4c4", "#ffb239", "#46a0d6", "#2f3a72", "#209f57"],
+  // Ltd = mid green; Full = dark green; Expanded = navy→dark green gradient
+  current: ["#c4c4c4", "#E36A93", "#209f57", "#0B5C3A", "expanded-gradient"],
   option1: ["#F5ECC2", "#B7C2A9", "#D6B43E", "#064F6E", "#C53C69"],
   option2: ["#E4E4E4", "#C19F2C", "#C3CD9D", "#437742", "#0D1C43"],
   option3: ["#A8A8A8", "#FDBF68", "#C16B27", "#A5C8D1", "#064F6E"],
   option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"],
-  option5: ["#c4c4c4", "#E36A93", "#78CDD0", "#209f57", "rainbow"],
-
+  option5: ["#c4c4c4", "#E36A93", "#209f57", "#0B5C3A", "expanded-gradient"],
 };
 
-const RAINBOW_SENTINEL = "rainbow";
-const RAINBOW_GRADIENT_ID = "rainbow-gradient";
-const RAINBOW_STOPS = [
-  { offset: "0%", color: "#e05c5c" },
-  { offset: "20%", color: "#e89a4e" },
-  { offset: "40%", color: "#e6d05a" },
-  { offset: "60%", color: "#5fb877" },
-  { offset: "80%", color: "#5a8fd6" },
-  { offset: "100%", color: "#9a6bc9" }
+const EXPANDED_GRADIENT_SENTINEL = "expanded-gradient";
+const EXPANDED_GRADIENT_ID = "expanded-gradient";
+const EXPANDED_GRADIENT_STOPS = [
+  { offset: "0%", color: "#2f3a72" },
+  { offset: "14.286%", color: "#004982" },
+  { offset: "28.571%", color: "#00578a" },
+  { offset: "42.857%", color: "#006488" },
+  { offset: "57.143%", color: "#00707d" },
+  { offset: "71.429%", color: "#007a69" },
+  { offset: "85.714%", color: "#00834f" },
+  { offset: "100%", color: "#018a31" }
 ];
-const RAINBOW_CSS_GRADIENT = `linear-gradient(135deg, ${RAINBOW_STOPS.map(s => `${s.color} ${s.offset}`).join(", ")})`;
+const EXPANDED_CSS_GRADIENT = `linear-gradient(90deg, ${EXPANDED_GRADIENT_STOPS.map(s => s.color).join(", ")})`;
 
 const PALETTE_LABELS = {
   current: "Current",
@@ -57,7 +60,14 @@ const PALETTE_LABELS = {
 
 let activePaletteKey = "current";
 
-const FILTER_BUTTON_ORDER = [...ERA_TYPES].reverse();
+const ERA_PROTECTION_TYPES = [
+  "Ltd. Gender Equality Provisions",
+  "Full State ERA",
+  "Expanded ERA"
+];
+const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
+const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
+const FILTER_GROUP_LABEL = "Has constitutional gender-equality protections";
 
 const color = d3.scaleOrdinal()
   .domain(ERA_TYPES)
@@ -65,19 +75,40 @@ const color = d3.scaleOrdinal()
   .unknown("#f0f0f0");
 
 const activeFilters = new Set();
-let showFederalRatification = false;
 const mapUI = {
   lookup: null,
   tooltip: null,
   statePaths: null,
   outlineLayer: null,
-  ratificationOutline: null,
-  topology: null,
   path: null,
   activeTab: "review",
   zoomOut: null,
   isZoomed: false
 };
+
+function readSheetCache() {
+  try {
+    const raw = localStorage.getItem(SHEET_CACHE_KEY);
+    if (!raw) return null;
+    const { fetchedAt, data } = JSON.parse(raw);
+    if (!fetchedAt || !data) return null;
+    if (Date.now() - fetchedAt > SHEET_CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeSheetCache(data) {
+  try {
+    localStorage.setItem(SHEET_CACHE_KEY, JSON.stringify({
+      fetchedAt: Date.now(),
+      data
+    }));
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
 
 function fetchSheetJsonp(url) {
   return new Promise((resolve, reject) => {
@@ -100,6 +131,16 @@ function fetchSheetJsonp(url) {
   });
 }
 
+function loadSheetData() {
+  const cached = readSheetCache();
+  if (cached) return Promise.resolve(cached);
+
+  return fetchSheetJsonp(SHEET_DATA_URL).then(data => {
+    writeSheetCache(data);
+    return data;
+  });
+}
+
 function countByCategory(stateData) {
   const counts = Object.fromEntries(ERA_TYPES.map(t => [t, 0]));
   stateData.forEach(d => {
@@ -110,8 +151,8 @@ function countByCategory(stateData) {
 }
 
 function textColor(hex) {
-  // The rainbow gradient is light overall, so use dark text for non-hex values.
-  if (!hex || !hex.startsWith("#")) return "#222";
+  // Expanded gradient is dark throughout, so use light text on it.
+  if (!hex || !hex.startsWith("#")) return "#fff";
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -122,24 +163,20 @@ function getEraType(row) {
   return row ? row["State ERA type"] : null;
 }
 
-function isFederallyRatified(row) {
-  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
-}
-
-function isRainbow(value) {
-  return value === RAINBOW_SENTINEL;
+function isExpandedGradient(value) {
+  return value === EXPANDED_GRADIENT_SENTINEL;
 }
 
 function svgFill(era) {
   const value = color(era);
-  return isRainbow(value) ? `url(#${RAINBOW_GRADIENT_ID})` : value;
+  return isExpandedGradient(value) ? `url(#${EXPANDED_GRADIENT_ID})` : value;
 }
 
 function applySwatchBackground(selection, value) {
-  if (isRainbow(value)) {
+  if (isExpandedGradient(value)) {
     selection
       .style("background-color", null)
-      .style("background-image", RAINBOW_CSS_GRADIENT);
+      .style("background-image", EXPANDED_CSS_GRADIENT);
   } else {
     selection
       .style("background-image", null)
@@ -148,7 +185,7 @@ function applySwatchBackground(selection, value) {
 }
 
 function applyFilterButtonColor(selection, value) {
-  const fill = isRainbow(value) ? RAINBOW_CSS_GRADIENT : value;
+  const fill = isExpandedGradient(value) ? EXPANDED_CSS_GRADIENT : value;
   selection
     .style("--btn-fill", fill)
     .style("--btn-on-fill-text", textColor(value))
@@ -158,8 +195,8 @@ function applyFilterButtonColor(selection, value) {
 }
 
 function swatchStyle(value) {
-  return isRainbow(value)
-    ? `background-image:${RAINBOW_CSS_GRADIENT}`
+  return isExpandedGradient(value)
+    ? `background-image:${EXPANDED_CSS_GRADIENT}`
     : `background-color:${value}`;
 }
 
@@ -174,14 +211,14 @@ function renderMap(us) {
 
   const gradient = svg.append("defs")
     .append("linearGradient")
-    .attr("id", RAINBOW_GRADIENT_ID)
+    .attr("id", EXPANDED_GRADIENT_ID)
     .attr("x1", "0%")
     .attr("y1", "0%")
     .attr("x2", "100%")
-    .attr("y2", "100%");
+    .attr("y2", "0%");
 
   gradient.selectAll("stop")
-    .data(RAINBOW_STOPS)
+    .data(EXPANDED_GRADIENT_STOPS)
     .join("stop")
     .attr("offset", d => d.offset)
     .attr("stop-color", d => d.color);
@@ -204,19 +241,8 @@ function renderMap(us) {
     .attr("stroke-linejoin", "round")
     .attr("d", path);
 
-  const ratificationOutline = mapLayer.append("path")
-    .attr("class", "ratification-outline")
-    .attr("fill", "none")
-    .attr("stroke", "#000")
-    .attr("stroke-width", 2)
-    .attr("stroke-linejoin", "round")
-    .attr("pointer-events", "none")
-    .attr("visibility", "hidden");
-
   const outlineLayer = mapLayer.append("g").attr("class", "state-outline");
   mapUI.outlineLayer = outlineLayer;
-  mapUI.ratificationOutline = ratificationOutline;
-  mapUI.topology = us;
   mapUI.path = path;
 
   attachZoom(svg, mapLayer, statePaths, path);
@@ -262,12 +288,13 @@ function initStatePanel() {
   return panel;
 }
 
-function setPaneContent(selection, text, emptyMessage) {
-  selection.selectAll("*").remove();
-  if (text) {
-    selection.text(text);
+function setPaneContent(selection, html, emptyMessage) {
+  // Sheet export may include rich-text HTML (<strong>, <em>, <u>, <s>, <a>).
+  // Newlines are preserved via .state-panel-pane { white-space: pre-line }.
+  if (html) {
+    selection.html(html);
   } else {
-    selection.append("em").text(emptyMessage);
+    selection.html("").append("em").attr("class", "empty").text(emptyMessage);
   }
 }
 
@@ -285,6 +312,7 @@ function showStatePanel(row) {
   const era = row["State ERA type"];
   const review = (row["Federal Standard of Review"] || "").trim();
   const cases = (row["Sex Equality Cases"] || "").trim();
+  const provisionContext = (row["Sex Equality Provision Context"] || "").trim();
 
   panel.select(".state-panel-name").text(row.State);
   panel.select(".state-panel-status").text(era || "Unknown");
@@ -299,6 +327,11 @@ function showStatePanel(row) {
     panel.select('[data-pane="cases"]'),
     cases,
     "No sex equality cases available."
+  );
+  setPaneContent(
+    panel.select('[data-pane="provision"]'),
+    provisionContext,
+    "No sex equality provision context available."
   );
 
   panel.selectAll(".state-panel-tab")
@@ -319,8 +352,9 @@ function clearStatePanel() {
   panel.select(".state-panel-swatch")
     .style("background-color", null)
     .style("background-image", null);
-  panel.select('[data-pane="review"]').selectAll("*").remove();
-  panel.select('[data-pane="cases"]').selectAll("*").remove();
+  panel.select('[data-pane="review"]').html("");
+  panel.select('[data-pane="cases"]').html("");
+  panel.select('[data-pane="provision"]').html("");
 }
 
 function hideStatePanel() {
@@ -387,48 +421,12 @@ function initPaletteSelector() {
   });
 }
 
-function isStateFullyOpaque(row) {
-  if (showFederalRatification && !isFederallyRatified(row)) return false;
-  if (activeFilters.size === 0) return true;
-  const era = getEraType(row);
-  return !!(era && activeFilters.has(era));
-}
-
 function updateMapOpacity(statePaths, lookup) {
+  const filtering = activeFilters.size > 0;
   statePaths.attr("opacity", d => {
-    return isStateFullyOpaque(lookup.get(d.properties.name)) ? 1 : 0.15;
-  });
-  updateRatificationOutline();
-}
-
-function updateRatificationOutline() {
-  const outline = mapUI.ratificationOutline;
-  const us = mapUI.topology;
-  const lookup = mapUI.lookup;
-  if (!outline || !us || !mapUI.path) return;
-
-  if (!showFederalRatification || !lookup) {
-    outline.attr("d", null).attr("visibility", "hidden");
-    return;
-  }
-
-  const mesh = topojson.mesh(us, us.objects.states, (a, b) => {
-    const aOn = isStateFullyOpaque(lookup.get(a.properties.name));
-    if (a === b) return aOn;
-    const bOn = isStateFullyOpaque(lookup.get(b.properties.name));
-    return aOn !== bOn;
-  });
-
-  outline
-    .datum(mesh)
-    .attr("d", mapUI.path)
-    .attr("visibility", "visible");
-}
-
-function initRatificationToggle(statePaths, lookup) {
-  d3.select("#federal-ratification-toggle").on("change", function () {
-    showFederalRatification = this.checked;
-    updateMapOpacity(statePaths, lookup);
+    const era = getEraType(lookup.get(d.properties.name));
+    if (!filtering) return 1;
+    return era && activeFilters.has(era) ? 1 : 0.15;
   });
 }
 
@@ -438,11 +436,18 @@ function showMapControls() {
     .attr("aria-hidden", null);
 }
 
-function renderFilters(counts, statePaths, lookup) {
-  const filters = d3.select("#filters")
-    .selectAll("button")
-    .data(FILTER_BUTTON_ORDER)
-    .join("button")
+function allProtectionFiltersActive() {
+  return ERA_PROTECTION_TYPES.every(t => activeFilters.has(t));
+}
+
+function revealFilterGroupToggle(root) {
+  root.select(".filter-group-toggle")
+    .property("disabled", false)
+    .attr("aria-hidden", null);
+}
+
+function bindFilterButtons(selection, counts, refresh) {
+  selection
     .attr("class", "filter-btn")
     .attr("type", "button")
     .attr("aria-hidden", null)
@@ -451,20 +456,69 @@ function renderFilters(counts, statePaths, lookup) {
     })
     .classed("active", d => activeFilters.has(d))
     .classed("filter-btn--placeholder", false)
-    .on("click", (_, category) => {
+    .on("click", (event, category) => {
+      event.stopPropagation();
       if (activeFilters.has(category)) {
         activeFilters.delete(category);
       } else {
         activeFilters.add(category);
       }
-      filters.classed("active", d => activeFilters.has(d));
-      updateMapOpacity(statePaths, lookup);
-    });
+      refresh();
+    })
+    .html(d => `
+      <span class="label">${d}</span>
+      <span class="count">${counts[d]}</span>
+    `);
+}
 
-  filters.html(d => `
-    <span class="label">${d}</span>
-    <span class="count">${counts[d]}</span>
-  `);
+function renderFilters(counts, statePaths, lookup) {
+  const root = d3.select("#filters");
+
+  let group = root.select(".filter-group");
+  if (group.empty()) {
+    group = root.insert("div", ":first-child")
+      .attr("class", "filter-group")
+      .attr("role", "group")
+      .attr("aria-label", FILTER_GROUP_LABEL);
+    group.append("button")
+      .attr("type", "button")
+      .attr("class", "filter-group-toggle")
+      .attr("aria-hidden", "true")
+      .property("disabled", true)
+      .html(`
+        <span class="filter-group-toggle-label">${FILTER_GROUP_LABEL}</span>
+        <span class="filter-group-toggle-bar" aria-hidden="true"></span>
+      `);
+    group.append("div").attr("class", "filter-group-buttons");
+  }
+
+  const refresh = () => {
+    root.selectAll("button.filter-btn")
+      .classed("active", d => activeFilters.has(d));
+    updateMapOpacity(statePaths, lookup);
+  };
+
+  const protectionButtons = group.select(".filter-group-buttons")
+    .selectAll("button.filter-btn")
+    .data(PROTECTION_FILTER_ORDER)
+    .join("button");
+  bindFilterButtons(protectionButtons, counts, refresh);
+
+  const outerButtons = root.selectAll(":scope > button.filter-btn")
+    .data(OUTER_FILTER_ORDER)
+    .join("button");
+  bindFilterButtons(outerButtons, counts, refresh);
+
+  group.select(".filter-group-toggle").on("click", () => {
+    if (allProtectionFiltersActive()) {
+      ERA_PROTECTION_TYPES.forEach(t => activeFilters.delete(t));
+    } else {
+      ERA_PROTECTION_TYPES.forEach(t => activeFilters.add(t));
+    }
+    refresh();
+  });
+
+  revealFilterGroupToggle(root);
 }
 
 function createTooltip() {
@@ -618,7 +672,6 @@ function applySheetData(sheetData, statePaths, tooltip) {
 
   applyMapColors(statePaths, lookup);
   renderFilters(counts, statePaths, lookup);
-  initRatificationToggle(statePaths, lookup);
   attachTooltip(statePaths, lookup, tooltip);
   showMapControls();
   hideMapLoading();
@@ -626,8 +679,9 @@ function applySheetData(sheetData, statePaths, tooltip) {
 
 initStatePanel();
 
-// Start sheet fetch immediately so it overlaps topology download + map render.
-const sheetPromise = fetchSheetJsonp(SHEET_DATA_URL);
+// Start sheet load immediately so it overlaps topology download + map render.
+// Uses localStorage cache so refreshes within 1 minute skip the Apps Script call.
+const sheetPromise = loadSheetData();
 
 fetch(TOPO_URL)
   .then(res => {
