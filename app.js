@@ -4,7 +4,7 @@ const SHEET_CACHE_TTL_MS = 60 * 1000;
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
 const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
-const PANEL_WIDTH_RATIO = 0.5;
+const PANEL_WIDTH_RATIO = 2 / 3;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
 const ZOOM_DURATION = 750;
 const MOBILE_LAYOUT_MQ = "(max-width: 700px)";
@@ -312,7 +312,7 @@ function showStatePanel(row) {
   const era = row["State ERA type"];
   const review = (row["Federal Standard of Review"] || "").trim();
   const cases = (row["Sex Equality Cases"] || "").trim();
-  const provisionContext = (row["Sex Equality Provision Context"] || "").trim();
+  const provisionContext = (row["Constitution Context"] || "").trim();
 
   panel.select(".state-panel-name").text(row.State);
   panel.select(".state-panel-status").text(era || "Unknown");
@@ -331,7 +331,7 @@ function showStatePanel(row) {
   setPaneContent(
     panel.select('[data-pane="provision"]'),
     provisionContext,
-    "No sex equality provision context available."
+    "No constitution context available."
   );
 
   panel.selectAll(".state-panel-tab")
@@ -528,7 +528,12 @@ function createTooltip() {
 }
 
 function showTooltip(tooltip, event, row) {
-  if (!row || mapUI.isZoomed || d3.select("#state-panel").classed("visible")) {
+  if (
+    !row ||
+    isMobileLayout() ||
+    mapUI.isZoomed ||
+    d3.select("#state-panel").classed("visible")
+  ) {
     hideTooltip(tooltip);
     return;
   }
@@ -639,18 +644,22 @@ function attachTooltip(statePaths, lookup, tooltip) {
   statePaths
     .on("click.zoom", () => hideTooltip(tooltip))
     .on("mouseenter", (event, d) => {
+      if (isMobileLayout()) return;
       if (!mapUI.isZoomed) setStateOutline(d);
       showTooltip(tooltip, event, lookup.get(d.properties.name));
     })
     .on("mousemove", (event, d) => {
+      if (isMobileLayout()) return;
       showTooltip(tooltip, event, lookup.get(d.properties.name));
     })
     .on("mouseleave", () => {
+      if (isMobileLayout()) return;
       if (!mapUI.isZoomed) setStateOutline(null);
       hideTooltip(tooltip);
     });
 
   d3.select("#map").on("mouseleave", () => {
+    if (isMobileLayout()) return;
     if (!mapUI.isZoomed) setStateOutline(null);
     hideTooltip(tooltip);
   });

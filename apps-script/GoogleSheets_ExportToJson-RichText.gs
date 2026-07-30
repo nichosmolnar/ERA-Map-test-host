@@ -4,7 +4,7 @@
  * Most cells are exported as plain strings via getValues().
  * Only these columns keep Google Sheets rich-text formatting as HTML
  * (<strong>, <em>, <u>, <s>, <a>):
- *   - Sex Equality Provision Context
+ *   - Constitution Context
  *   - Sex Equality Cases
  *   - Federal Standard of Review
  *
@@ -29,7 +29,7 @@ var STATE_ERAS_SHEET = "State ERAs";
 
 /** Columns that should preserve sheet bold/italic/etc. as HTML. */
 var RICH_TEXT_COLUMNS = {
-  "Sex Equality Provision Context": true,
+  "Constitution Context": true,
   "Sex Equality Cases": true,
   "Federal Standard of Review": true
 };

@@ -321,7 +321,7 @@
       position: absolute;
       top: 0;
       right: 0;
-      width: 50%;
+      width: 66.666%;
       height: 100%;
       box-sizing: border-box;
       border-left: 2px solid #000;
@@ -484,9 +484,39 @@
         min-width: 0;
       }
 
+      .tooltip {
+        display: none !important;
+      }
+
       #state-panel {
         width: 100%;
         border-left: none;
+      }
+
+      .state-panel-header {
+        padding: 8px 32px 8px 10px;
+      }
+
+      .state-panel-close {
+        top: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        font-size: var(--font-size-lg);
+      }
+
+      .state-panel-name {
+        font-size: var(--font-size-xl);
+        margin-bottom: 4px;
+      }
+
+      .state-panel-tab {
+        padding: 6px 4px;
+        font-size: var(--font-size-sm);
+      }
+
+      .state-panel-content {
+        padding: 10px;
       }
     }
   </style>
@@ -525,7 +555,7 @@
         <div class="state-panel-tabs">
           <button type="button" class="state-panel-tab active" data-tab="review">Federal Standard of Review</button>
           <button type="button" class="state-panel-tab" data-tab="cases">Sex Equality Cases</button>
-          <button type="button" class="state-panel-tab" data-tab="provision">Sex Equality Provision Context</button>
+          <button type="button" class="state-panel-tab" data-tab="provision">Constitution Context</button>
         </div>
         <div class="state-panel-content">
           <div class="state-panel-pane active" data-pane="review"></div>
