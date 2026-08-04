@@ -17,7 +17,8 @@
 <!-- Copy EVERYTHING from this BEGIN marker through the END marker
      into a Squarespace Code Block. Set display mode to HTML (not Markdown).
      Includes: Google Fonts (@import — <link> tags are stripped by Squarespace),
-     CSS, map HTML, CDN scripts, and app JavaScript. -->
+     CSS, map HTML, CDN scripts, and app JavaScript.
+     Differs from the test host only by omitting color palette switching. -->
 
   <style>
     /* Squarespace strips <link> tags in Code Blocks; @import works here. */
@@ -30,6 +31,7 @@
       --font-size-sm: 13px;
       --font-size-xl: 21px;
       --font-size-title: 24px;
+      --font-size-hero: 38px;
       --font-serif: "Libre Baskerville", "Times New Roman", Times, serif;
       max-width: 975px;
       margin: 0 auto;
@@ -46,6 +48,16 @@
     #viz select,
     #viz input {
       font-family: "Teachers", sans-serif;
+    }
+
+    #map-title {
+      font-family: var(--font-serif);
+      font-size: var(--font-size-hero);
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: left;
+      margin: 0 0 16px;
+      color: #222;
     }
 
     #filters {
@@ -65,6 +77,12 @@
       box-sizing: border-box;
       padding: 6px 0 0;
       background: #f3f3f3;
+      transition: background-color 0.2s ease;
+    }
+
+    .filter-group:has(.filter-group-toggle:hover:not(:disabled)),
+    .filter-group:has(.filter-group-toggle.active) {
+      background: #d8d8d8;
     }
 
     .filter-group-toggle {
@@ -328,7 +346,7 @@
       position: absolute;
       top: 0;
       right: 0;
-      width: 33.333%;
+      width: 66.666%;
       height: 100%;
       box-sizing: border-box;
       border-left: 2px solid #000;
@@ -438,7 +456,7 @@
       display: block;
     }
 
-    .state-panel-pane em {
+    .state-panel-pane em.empty {
       color: #666;
     }
 
@@ -461,17 +479,48 @@
         min-width: 0;
       }
 
+      .tooltip {
+        display: none !important;
+      }
+
       #state-panel {
         width: 100%;
         border-left: none;
       }
-    }
-  </style>
 
-  <div id="viz">
+      .state-panel-header {
+        padding: 8px 32px 8px 10px;
+      }
+
+      .state-panel-close {
+        top: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        font-size: var(--font-size-lg);
+      }
+
+      .state-panel-name {
+        font-size: var(--font-size-xl);
+        margin-bottom: 4px;
+      }
+
+      .state-panel-tab {
+        padding: 6px 4px;
+        font-size: var(--font-size-sm);
+      }
+
+      .state-panel-content {
+        padding: 10px;
+      }
+    }
+    </style>
+
+<div id="viz">
+    <h1 id="map-title">ERA Landscape in the United States</h1>
     <div id="filters">
       <div class="filter-group" role="group" aria-label="Has constitutional gender-equality protections">
-        <button type="button" class="filter-group-toggle" disabled aria-hidden="true">
+        <button type="button" class="filter-group-toggle" disabled aria-hidden="true" aria-pressed="false">
           <span class="filter-group-toggle-label">Has constitutional gender-equality protections</span>
           <span class="filter-group-toggle-bar" aria-hidden="true"></span>
         </button>
@@ -499,10 +548,12 @@
         <div class="state-panel-tabs">
           <button type="button" class="state-panel-tab active" data-tab="review">Federal Standard of Review</button>
           <button type="button" class="state-panel-tab" data-tab="cases">Sex Equality Cases</button>
+          <button type="button" class="state-panel-tab" data-tab="provision">Constitution Context</button>
         </div>
         <div class="state-panel-content">
           <div class="state-panel-pane active" data-pane="review"></div>
           <div class="state-panel-pane" data-pane="cases"></div>
+          <div class="state-panel-pane" data-pane="provision"></div>
         </div>
       </div>
     </div>
@@ -512,15 +563,13 @@
   <script src="https://cdn.jsdelivr.net/combine/npm/d3-color@3/dist/d3-color.min.js,npm/d3-dispatch@3/dist/d3-dispatch.min.js,npm/d3-ease@3/dist/d3-ease.min.js,npm/d3-interpolate@3/dist/d3-interpolate.min.js,npm/d3-selection@3/dist/d3-selection.min.js,npm/d3-timer@3/dist/d3-timer.min.js,npm/d3-transition@3/dist/d3-transition.min.js,npm/d3-array@3/dist/d3-array.min.js,npm/d3-format@3/dist/d3-format.min.js,npm/d3-time@3/dist/d3-time.min.js,npm/d3-time-format@4/dist/d3-time-format.min.js,npm/d3-scale@4/dist/d3-scale.min.js,npm/d3-geo@3/dist/d3-geo.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
   <script>
-
-  // PUT UPDATED GOOGLE SHEETS DEPLOYMENT LINK HERE
-  const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbz78SJdxcvR4p7zjgKB8xyB4MF85pifCbUPB0Q_YpyCajKDDK4PVwehDkF64M4HesHbIg/exec";
-  
-
+  const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyeo7T6ZtDqJZcpjeink-etSuEXbv4V_IkebWNOPJKxPmHoqTEDvgWJoGxXPYokSSWyqg/exec";
+  const SHEET_CACHE_KEY = "era-map-sheet-cache";
+  const SHEET_CACHE_TTL_MS = 60 * 1000;
   const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
   const MAP_WIDTH = 975;
   const MAP_HEIGHT = 610;
-  const PANEL_WIDTH_RATIO = 1 / 3;
+  const PANEL_WIDTH_RATIO = 2 / 3;
   const MAP_PLACEHOLDER_FILL = "#e8e8e8";
   const ZOOM_DURATION = 750;
   const MOBILE_LAYOUT_MQ = "(max-width: 700px)";
@@ -565,6 +614,7 @@
   ];
   const EXPANDED_CSS_GRADIENT = `linear-gradient(90deg, ${EXPANDED_GRADIENT_STOPS.map(s => s.color).join(", ")})`;
 
+
   const ERA_PROTECTION_TYPES = [
     "Ltd. Gender Equality Provisions",
     "Full State ERA",
@@ -572,11 +622,11 @@
   ];
   const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
   const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
-  const FILTER_GROUP_LABEL = "Has gender-equality protections";
+  const FILTER_GROUP_LABEL = "Has constitutional gender-equality protections";
 
   const color = d3.scaleOrdinal()
     .domain(ERA_TYPES)
-    .range(COLOR_PALETTES.option5)
+    .range(COLOR_PALETTES.current)
     .unknown("#f0f0f0");
 
   const activeFilters = new Set();
@@ -590,6 +640,30 @@
     zoomOut: null,
     isZoomed: false
   };
+
+  function readSheetCache() {
+    try {
+      const raw = localStorage.getItem(SHEET_CACHE_KEY);
+      if (!raw) return null;
+      const { fetchedAt, data } = JSON.parse(raw);
+      if (!fetchedAt || !data) return null;
+      if (Date.now() - fetchedAt > SHEET_CACHE_TTL_MS) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSheetCache(data) {
+    try {
+      localStorage.setItem(SHEET_CACHE_KEY, JSON.stringify({
+        fetchedAt: Date.now(),
+        data
+      }));
+    } catch {
+      // Ignore quota / private-mode failures.
+    }
+  }
 
   function fetchSheetJsonp(url) {
     return new Promise((resolve, reject) => {
@@ -609,6 +683,16 @@
         reject(new Error("Sheet JSONP fetch failed"));
       };
       document.head.appendChild(script);
+    });
+  }
+
+  function loadSheetData() {
+    const cached = readSheetCache();
+    if (cached) return Promise.resolve(cached);
+
+    return fetchSheetJsonp(SHEET_DATA_URL).then(data => {
+      writeSheetCache(data);
+      return data;
     });
   }
 
@@ -759,12 +843,13 @@
     return panel;
   }
 
-  function setPaneContent(selection, text, emptyMessage) {
-    selection.selectAll("*").remove();
-    if (text) {
-      selection.text(text);
+  function setPaneContent(selection, html, emptyMessage) {
+    // Sheet export may include rich-text HTML (<strong>, <em>, <u>, <s>, <a>).
+    // Newlines are preserved via .state-panel-pane { white-space: pre-line }.
+    if (html) {
+      selection.html(html);
     } else {
-      selection.append("em").text(emptyMessage);
+      selection.html("").append("em").attr("class", "empty").text(emptyMessage);
     }
   }
 
@@ -782,6 +867,7 @@
     const era = row["State ERA type"];
     const review = (row["Federal Standard of Review"] || "").trim();
     const cases = (row["Sex Equality Cases"] || "").trim();
+    const provisionContext = (row["Constitution Context"] || "").trim();
 
     panel.select(".state-panel-name").text(row.State);
     panel.select(".state-panel-status").text(era || "Unknown");
@@ -796,6 +882,11 @@
       panel.select('[data-pane="cases"]'),
       cases,
       "No sex equality cases available."
+    );
+    setPaneContent(
+      panel.select('[data-pane="provision"]'),
+      provisionContext,
+      "No constitution context available."
     );
 
     panel.selectAll(".state-panel-tab")
@@ -816,8 +907,9 @@
     panel.select(".state-panel-swatch")
       .style("background-color", null)
       .style("background-image", null);
-    panel.select('[data-pane="review"]').selectAll("*").remove();
-    panel.select('[data-pane="cases"]').selectAll("*").remove();
+    panel.select('[data-pane="review"]').html("");
+    panel.select('[data-pane="cases"]').html("");
+    panel.select('[data-pane="provision"]').html("");
   }
 
   function hideStatePanel() {
@@ -842,6 +934,7 @@
     statePaths.attr("fill", d => svgFill(getEraType(lookup.get(d.properties.name))));
   }
 
+
   function updateMapOpacity(statePaths, lookup) {
     const filtering = activeFilters.size > 0;
     statePaths.attr("opacity", d => {
@@ -850,6 +943,7 @@
       return era && activeFilters.has(era) ? 1 : 0.15;
     });
   }
+
 
   function allProtectionFiltersActive() {
     return ERA_PROTECTION_TYPES.every(t => activeFilters.has(t));
@@ -899,6 +993,7 @@
         .attr("type", "button")
         .attr("class", "filter-group-toggle")
         .attr("aria-hidden", "true")
+        .attr("aria-pressed", "false")
         .property("disabled", true)
         .html(`
           <span class="filter-group-toggle-label">${FILTER_GROUP_LABEL}</span>
@@ -908,8 +1003,12 @@
     }
 
     const refresh = () => {
+      const groupActive = allProtectionFiltersActive();
       root.selectAll("button.filter-btn")
         .classed("active", d => activeFilters.has(d));
+      group.select(".filter-group-toggle")
+        .classed("active", groupActive)
+        .attr("aria-pressed", groupActive);
       updateMapOpacity(statePaths, lookup);
     };
 
@@ -934,6 +1033,7 @@
     });
 
     revealFilterGroupToggle(root);
+    refresh();
   }
 
   function createTooltip() {
@@ -943,7 +1043,12 @@
   }
 
   function showTooltip(tooltip, event, row) {
-    if (!row || mapUI.isZoomed || d3.select("#state-panel").classed("visible")) {
+    if (
+      !row ||
+      isMobileLayout() ||
+      mapUI.isZoomed ||
+      d3.select("#state-panel").classed("visible")
+    ) {
       hideTooltip(tooltip);
       return;
     }
@@ -1054,18 +1159,22 @@
     statePaths
       .on("click.zoom", () => hideTooltip(tooltip))
       .on("mouseenter", (event, d) => {
+        if (isMobileLayout()) return;
         if (!mapUI.isZoomed) setStateOutline(d);
         showTooltip(tooltip, event, lookup.get(d.properties.name));
       })
       .on("mousemove", (event, d) => {
+        if (isMobileLayout()) return;
         showTooltip(tooltip, event, lookup.get(d.properties.name));
       })
       .on("mouseleave", () => {
+        if (isMobileLayout()) return;
         if (!mapUI.isZoomed) setStateOutline(null);
         hideTooltip(tooltip);
       });
 
     d3.select("#map").on("mouseleave", () => {
+      if (isMobileLayout()) return;
       if (!mapUI.isZoomed) setStateOutline(null);
       hideTooltip(tooltip);
     });
@@ -1093,8 +1202,9 @@
 
   initStatePanel();
 
-  // Start sheet fetch immediately so it overlaps topology download + map render.
-  const sheetPromise = fetchSheetJsonp(SHEET_DATA_URL);
+  // Start sheet load immediately so it overlaps topology download + map render.
+  // Uses localStorage cache so refreshes within 1 minute skip the Apps Script call.
+  const sheetPromise = loadSheetData();
 
   fetch(TOPO_URL)
     .then(res => {

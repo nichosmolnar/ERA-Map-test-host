@@ -58,6 +58,12 @@
       box-sizing: border-box;
       padding: 6px 0 0;
       background: #f3f3f3;
+      transition: background-color 0.2s ease;
+    }
+
+    .filter-group:has(.filter-group-toggle:hover:not(:disabled)),
+    .filter-group:has(.filter-group-toggle.active) {
+      background: #d8d8d8;
     }
 
     .filter-group-toggle {
@@ -527,7 +533,7 @@
     <h1 id="map-title">ERA Landscape in the United States</h1>
     <div id="filters">
       <div class="filter-group" role="group" aria-label="Has constitutional gender-equality protections">
-        <button type="button" class="filter-group-toggle" disabled aria-hidden="true">
+        <button type="button" class="filter-group-toggle" disabled aria-hidden="true" aria-pressed="false">
           <span class="filter-group-toggle-label">Has constitutional gender-equality protections</span>
           <span class="filter-group-toggle-bar" aria-hidden="true"></span>
         </button>

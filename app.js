@@ -484,6 +484,7 @@ function renderFilters(counts, statePaths, lookup) {
       .attr("type", "button")
       .attr("class", "filter-group-toggle")
       .attr("aria-hidden", "true")
+      .attr("aria-pressed", "false")
       .property("disabled", true)
       .html(`
         <span class="filter-group-toggle-label">${FILTER_GROUP_LABEL}</span>
@@ -493,8 +494,12 @@ function renderFilters(counts, statePaths, lookup) {
   }
 
   const refresh = () => {
+    const groupActive = allProtectionFiltersActive();
     root.selectAll("button.filter-btn")
       .classed("active", d => activeFilters.has(d));
+    group.select(".filter-group-toggle")
+      .classed("active", groupActive)
+      .attr("aria-pressed", groupActive);
     updateMapOpacity(statePaths, lookup);
   };
 
@@ -519,6 +524,7 @@ function renderFilters(counts, statePaths, lookup) {
   });
 
   revealFilterGroupToggle(root);
+  refresh();
 }
 
 function createTooltip() {
