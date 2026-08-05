@@ -281,7 +281,7 @@
       visibility: hidden;
       box-sizing: border-box;
       width: 360px;
-      height: 185px;
+      max-height: 185px;
       border: 2px solid #000;
       background: #fff;
       padding: 10px 14px;
@@ -307,22 +307,6 @@
       flex-shrink: 0;
     }
 
-    .tooltip-category {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      flex-shrink: 0;
-      font-weight: 700;
-    }
-
-    .tooltip-swatch {
-      width: 14px;
-      height: 14px;
-      border: 1px solid #000;
-      flex-shrink: 0;
-    }
-
     .tooltip-background {
       font-size: var(--font-size-base);
       line-height: 1.4;
@@ -330,14 +314,13 @@
       overflow: hidden;
       display: -webkit-box;
       -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
-      max-height: calc(var(--font-size-base) * 1.4 * 3);
+      -webkit-line-clamp: 4;
+      max-height: calc(var(--font-size-base) * 1.4 * 4);
       flex: 0 0 auto;
     }
 
     .tooltip-cta {
-      margin-top: auto;
-      padding-top: 8px;
+      margin-top: 6px;
       font-weight: 700;
       flex-shrink: 0;
     }
@@ -546,14 +529,14 @@
           </div>
         </div>
         <div class="state-panel-tabs">
-          <button type="button" class="state-panel-tab active" data-tab="review">Federal Standard of Review</button>
+          <button type="button" class="state-panel-tab active" data-tab="provision">Constitution Context</button>
           <button type="button" class="state-panel-tab" data-tab="cases">Sex Equality Cases</button>
-          <button type="button" class="state-panel-tab" data-tab="provision">Constitution Context</button>
+          <button type="button" class="state-panel-tab" data-tab="review">Federal Standard of Review</button>
         </div>
         <div class="state-panel-content">
-          <div class="state-panel-pane active" data-pane="review"></div>
+          <div class="state-panel-pane active" data-pane="provision"></div>
           <div class="state-panel-pane" data-pane="cases"></div>
-          <div class="state-panel-pane" data-pane="provision"></div>
+          <div class="state-panel-pane" data-pane="review"></div>
         </div>
       </div>
     </div>
@@ -636,7 +619,7 @@
     statePaths: null,
     outlineLayer: null,
     path: null,
-    activeTab: "review",
+    activeTab: "provision",
     zoomOut: null,
     isZoomed: false
   };
@@ -747,12 +730,6 @@
       .style("background-color", null)
       .style("background-image", null)
       .style("color", null);
-  }
-
-  function swatchStyle(value) {
-    return isExpandedGradient(value)
-      ? `background-image:${EXPANDED_CSS_GRADIENT}`
-      : `background-color:${value}`;
   }
 
   function renderMap(us) {
@@ -1053,15 +1030,10 @@
       return;
     }
 
-    const era = row["State ERA type"];
     const hover = (row.HOVER || "").trim();
 
     tooltip.html(`
       <div class="tooltip-name">${row.State}</div>
-      <div class="tooltip-category">
-        <span class="tooltip-swatch" style="${swatchStyle(color(era))}"></span>
-        <span>${era || "Unknown"}</span>
-      </div>
       ${hover
         ? `<div class="tooltip-background">${hover}</div>`
         : `<div class="tooltip-background"><em>No information available.</em></div>`}

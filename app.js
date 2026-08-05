@@ -81,9 +81,13 @@ const mapUI = {
   statePaths: null,
   outlineLayer: null,
   path: null,
-  activeTab: "review",
+  activeTab: "provision",
   zoomOut: null,
-  isZoomed: false
+  isZoomed: false,
+  handleFeatureClick: null,
+  handleFeatureEnter: null,
+  handleFeatureMove: null,
+  handleFeatureLeave: null
 };
 
 function readSheetCache() {
@@ -194,18 +198,176 @@ function applyFilterButtonColor(selection, value) {
     .style("color", null);
 }
 
-function swatchStyle(value) {
-  return isExpandedGradient(value)
-    ? `background-image:${EXPANDED_CSS_GRADIENT}`
-    : `background-color:${value}`;
-}
-
 // Provided by the geo-albers-usa-territories <script> tag in index.html,
 // which extends d3's Albers USA projection with insets for Puerto Rico, the
 // US Virgin Islands, Guam, the Northern Mariana Islands, and American Samoa.
 const buildTerritoriesProjection = geoAlbersUsaTerritories.geoAlbersUsaTerritories;
 const PROJECTION_SCALE = 1200;
 const PROJECTION_TRANSLATE = [520, 305];
+
+// Matches the 1px CSS border on #map-frame (index.html) so the boxes below
+// read as part of the same frame rather than a separate, thinner outline.
+const MAP_BORDER_WIDTH = 1;
+
+// Reserved inset cells for each territory grouping, expressed as fractions of
+// the projection scale/translate (mirrors the offsets geo-albers-usa-territories
+// uses internally to lay out its insets). `outerEdges` lists which sides face
+// the edge of the map; those get pushed out flush with MAP_WIDTH/MAP_HEIGHT so
+// the box border merges seamlessly with the outer frame around the whole map.
+const TERRITORY_INSET_GROUPS = [
+  {
+    names: ["Puerto Rico", "United States Virgin Islands"],
+    region: { x0: 0.3, x1: 0.38, y0: 0.204, y1: 0.234 },
+    outerEdges: ["right", "bottom"]
+  },
+  {
+    names: ["Guam", "Commonwealth of the Northern Mariana Islands"],
+    region: { x0: -0.45, x1: -0.39, y0: 0.05, y1: 0.21 },
+    outerEdges: ["left"]
+  },
+  {
+    names: ["American Samoa"],
+    region: { x0: -0.45, x1: -0.39, y0: 0.21, y1: 0.234 },
+    outerEdges: ["left", "bottom"]
+  }
+];
+
+function territoryBoxRect(region) {
+  const [tx, ty] = PROJECTION_TRANSLATE;
+  const k = PROJECTION_SCALE;
+  return {
+    x0: tx + region.x0 * k,
+    x1: tx + region.x1 * k,
+    y0: ty + region.y0 * k,
+    y1: ty + region.y1 * k
+  };
+}
+
+function extendToMapEdges(rect, outerEdges) {
+  const extended = { ...rect };
+  if (outerEdges.includes("left")) extended.x0 = 0;
+  if (outerEdges.includes("right")) extended.x1 = MAP_WIDTH;
+  if (outerEdges.includes("top")) extended.y0 = 0;
+  if (outerEdges.includes("bottom")) extended.y1 = MAP_HEIGHT;
+  return extended;
+}
+
+function buildTerritoryBoxGroups(features) {
+  const byName = new Map(features.map(f => [f.properties.name, f]));
+  return TERRITORY_INSET_GROUPS
+    .map(group => ({
+      outerEdges: group.outerEdges,
+      features: group.names.map(name => byName.get(name)).filter(Boolean),
+      rect: extendToMapEdges(territoryBoxRect(group.region), group.outerEdges)
+    }))
+    .filter(group => group.features.length > 0);
+}
+
+// Only the sides that don't already sit on the map's own outer edge get a
+// visible line — the outer sides rely entirely on the #map-frame border
+// (index.html) so there's never a second, separately-aligned line drawn
+// directly on top of (or just inside) it.
+function territoryBoxBorderSegments(rect, outerEdges) {
+  const { x0, y0, x1, y1 } = rect;
+  const segments = [];
+  if (!outerEdges.includes("top")) segments.push([x0, y0, x1, y0]);
+  if (!outerEdges.includes("bottom")) segments.push([x0, y1, x1, y1]);
+  if (!outerEdges.includes("left")) segments.push([x0, y0, x0, y1]);
+  if (!outerEdges.includes("right")) segments.push([x1, y0, x1, y1]);
+  return segments;
+}
+
+// For a box covering two territories (e.g. Puerto Rico/USVI or Guam/N.
+// Mariana Islands), splits the box in half along whichever axis separates
+// the two territories, so hovering switches cleanly at the midpoint instead
+// of following an uneven nearest-shape boundary.
+function featureSplitter(features, path, rect) {
+  if (features.length <= 1) {
+    const only = features[0] || null;
+    return () => only;
+  }
+
+  const [a, b] = features;
+  const [ax, ay] = path.centroid(a);
+  const [bx, by] = path.centroid(b);
+  const horizontal = Math.abs(ax - bx) >= Math.abs(ay - by);
+
+  if (horizontal) {
+    const midX = (rect.x0 + rect.x1) / 2;
+    const [west, east] = ax <= bx ? [a, b] : [b, a];
+    return point => (point[0] <= midX ? west : east);
+  }
+
+  const midY = (rect.y0 + rect.y1) / 2;
+  const [north, south] = ay <= by ? [a, b] : [b, a];
+  return point => (point[1] <= midY ? north : south);
+}
+
+// Draws a border box over each territory inset (Puerto Rico/USVI,
+// Guam/N. Mariana Islands, American Samoa). The tiny territory shapes are
+// hard to hover precisely at this scale, so each box also acts as an
+// enlarged hover/click target, split in half between the territories it
+// covers so hovering one side vs. the other switches which one is active.
+function renderTerritoryBoxes(mapLayer, states, path) {
+  const groups = buildTerritoryBoxGroups(states.features).map(group => ({
+    ...group,
+    pickFeature: featureSplitter(group.features, path, group.rect)
+  }));
+  const boxLayer = mapLayer.append("g").attr("class", "territory-boxes");
+
+  boxLayer.selectAll("g.territory-box-border")
+    .data(groups)
+    .join("g")
+    .attr("class", "territory-box-border")
+    .attr("pointer-events", "none")
+    .each(function (d) {
+      d3.select(this).selectAll("line")
+        .data(territoryBoxBorderSegments(d.rect, d.outerEdges))
+        .join("line")
+        .attr("x1", seg => seg[0])
+        .attr("y1", seg => seg[1])
+        .attr("x2", seg => seg[2])
+        .attr("y2", seg => seg[3])
+        .attr("stroke", "#000")
+        .attr("stroke-width", MAP_BORDER_WIDTH)
+        .attr("vector-effect", "non-scaling-stroke");
+    });
+
+  const hitAreas = boxLayer.selectAll("rect.territory-box-hit")
+    .data(groups)
+    .join("rect")
+    .attr("class", "territory-box-hit")
+    .attr("x", d => d.rect.x0)
+    .attr("y", d => d.rect.y0)
+    .attr("width", d => d.rect.x1 - d.rect.x0)
+    .attr("height", d => d.rect.y1 - d.rect.y0)
+    .attr("fill", "transparent")
+    .attr("pointer-events", "all");
+
+  function localPoint(event) {
+    return d3.pointer(event, mapLayer.node());
+  }
+
+  hitAreas
+    .on("mouseenter", (event, d) => {
+      const feature = d.pickFeature(localPoint(event));
+      if (feature) mapUI.handleFeatureEnter?.(event, feature);
+    })
+    .on("mousemove", (event, d) => {
+      const feature = d.pickFeature(localPoint(event));
+      if (feature) mapUI.handleFeatureMove?.(event, feature);
+    })
+    .on("mouseleave", () => {
+      mapUI.handleFeatureLeave?.();
+    })
+    .on("click", (event, d) => {
+      event.stopPropagation();
+      const feature = d.pickFeature(localPoint(event));
+      if (feature) mapUI.handleFeatureClick?.(feature);
+    });
+
+  return hitAreas;
+}
 
 function renderMap(us) {
   const projection = buildTerritoriesProjection()
@@ -256,6 +418,7 @@ function renderMap(us) {
   mapUI.path = path;
 
   attachZoom(svg, mapLayer, statePaths, path);
+  renderTerritoryBoxes(mapLayer, states, path);
 
   return { statePaths, svg };
 }
@@ -554,15 +717,10 @@ function showTooltip(tooltip, event, row) {
     return;
   }
 
-  const era = row["State ERA type"];
   const hover = (row.HOVER || "").trim();
 
   tooltip.html(`
     <div class="tooltip-name">${row.State}</div>
-    <div class="tooltip-category">
-      <span class="tooltip-swatch" style="${swatchStyle(color(era))}"></span>
-      <span>${era || "Unknown"}</span>
-    </div>
     ${hover
       ? `<div class="tooltip-background">${hover}</div>`
       : `<div class="tooltip-background"><em>No information available.</em></div>`}
@@ -640,13 +798,17 @@ function attachZoom(svg, mapLayer, statePaths, path) {
     }
   }
 
-  statePaths.on("click", (event, d) => {
-    event.stopPropagation();
+  function handleFeatureClick(d) {
     if (zoomedState) {
       zoomOut();
       return;
     }
     zoomIn(d);
+  }
+
+  statePaths.on("click", (event, d) => {
+    event.stopPropagation();
+    handleFeatureClick(d);
   });
 
   svg.on("click", () => {
@@ -654,31 +816,56 @@ function attachZoom(svg, mapLayer, statePaths, path) {
   });
 
   mapUI.zoomOut = zoomOut;
+  mapUI.handleFeatureClick = handleFeatureClick;
 }
 
 function attachTooltip(statePaths, lookup, tooltip) {
+  // Tracks whichever feature is currently outlined/tooltipped. A territory
+  // box is a single DOM element covering multiple territories, so moving
+  // from one half to the other only fires "mousemove" (no fresh
+  // "mouseenter") — the outline needs to react there too whenever the
+  // hovered feature actually changes.
+  let hoveredFeature = null;
+
+  function setHoveredFeature(d) {
+    hoveredFeature = d;
+    if (!mapUI.isZoomed) setStateOutline(d);
+  }
+
+  function handleFeatureEnter(event, d) {
+    if (isMobileLayout()) return;
+    setHoveredFeature(d);
+    showTooltip(tooltip, event, lookup.get(d.properties.name));
+  }
+
+  function handleFeatureMove(event, d) {
+    if (isMobileLayout()) return;
+    if (d !== hoveredFeature) setHoveredFeature(d);
+    showTooltip(tooltip, event, lookup.get(d.properties.name));
+  }
+
+  function handleFeatureLeave() {
+    if (isMobileLayout()) return;
+    hoveredFeature = null;
+    if (!mapUI.isZoomed) setStateOutline(null);
+    hideTooltip(tooltip);
+  }
+
   statePaths
     .on("click.zoom", () => hideTooltip(tooltip))
-    .on("mouseenter", (event, d) => {
-      if (isMobileLayout()) return;
-      if (!mapUI.isZoomed) setStateOutline(d);
-      showTooltip(tooltip, event, lookup.get(d.properties.name));
-    })
-    .on("mousemove", (event, d) => {
-      if (isMobileLayout()) return;
-      showTooltip(tooltip, event, lookup.get(d.properties.name));
-    })
-    .on("mouseleave", () => {
-      if (isMobileLayout()) return;
-      if (!mapUI.isZoomed) setStateOutline(null);
-      hideTooltip(tooltip);
-    });
+    .on("mouseenter", handleFeatureEnter)
+    .on("mousemove", handleFeatureMove)
+    .on("mouseleave", handleFeatureLeave);
 
   d3.select("#map").on("mouseleave", () => {
     if (isMobileLayout()) return;
     if (!mapUI.isZoomed) setStateOutline(null);
     hideTooltip(tooltip);
   });
+
+  mapUI.handleFeatureEnter = handleFeatureEnter;
+  mapUI.handleFeatureMove = handleFeatureMove;
+  mapUI.handleFeatureLeave = handleFeatureLeave;
 }
 
 function hideMapLoading() {
