@@ -1,7 +1,7 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyeo7T6ZtDqJZcpjeink-etSuEXbv4V_IkebWNOPJKxPmHoqTEDvgWJoGxXPYokSSWyqg/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyDF-t09y4Zskw-0y457nVa8YV4sOLjm9AiSkfOuAWhzoiBzXylh53lCyT6aDmhi4V2CQ/exec";
 const SHEET_CACHE_KEY = "era-map-sheet-cache";
 const SHEET_CACHE_TTL_MS = 60 * 1000;
-const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json";
+const TOPO_URL = "https://static.observableusercontent.com/files/8326f37ebb0e430088bde96410bb0426ff6a71b3a592bb20987200ca00f8be73a0083b26ab17cb714ce111f936f695b96e77faffc560a0071d839e0742bb54f5";
 const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
 const PANEL_WIDTH_RATIO = 2 / 3;
@@ -200,10 +200,20 @@ function swatchStyle(value) {
     : `background-color:${value}`;
 }
 
+// Provided by the geo-albers-usa-territories <script> tag in index.html,
+// which extends d3's Albers USA projection with insets for Puerto Rico, the
+// US Virgin Islands, Guam, the Northern Mariana Islands, and American Samoa.
+const buildTerritoriesProjection = geoAlbersUsaTerritories.geoAlbersUsaTerritories;
+const PROJECTION_SCALE = 1200;
+const PROJECTION_TRANSLATE = [520, 305];
+
 function renderMap(us) {
+  const projection = buildTerritoriesProjection()
+    .scale(PROJECTION_SCALE)
+    .translate(PROJECTION_TRANSLATE);
   const states = topojson.feature(us, us.objects.states);
   const borders = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
-  const path = d3.geoPath();
+  const path = d3.geoPath(projection);
 
   const svg = d3.select("#map")
     .append("svg")

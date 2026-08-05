@@ -13,6 +13,15 @@
  *   "State ERAs": [ { "State": "Alabama", "Sex Equality Cases": "<em>…</em>", … }, … ]
  * }
  *
+ * Perf notes:
+ *   getRichTextValues() is much more expensive per-cell than getValues() (it has to
+ *   walk every formatting run), so it's only ever called on the specific rich-text
+ *   columns above, never the whole sheet. On top of that, the fully-built JSON is
+ *   cached in CacheService for CACHE_TTL_SECONDS so repeat requests skip touching the
+ *   spreadsheet entirely — this is what makes cold Apps Script executions fast. After
+ *   editing the sheet, run clearEraCache() from the Apps Script editor (Run menu) to
+ *   see changes immediately instead of waiting for the cache to expire.
+ *
  * Deploy as a Web App:
  *   Deploy > New deployment > Web app
  *   Execute as: Me
@@ -33,6 +42,62 @@ var RICH_TEXT_COLUMNS = {
   "Sex Equality Cases": true,
   "Federal Standard of Review": true
 };
+
+/**
+ * How long the built JSON is cached server-side (CacheService), in seconds.
+ * Max allowed by CacheService is 21600 (6 hours). Bump this up if the sheet
+ * changes rarely, or call clearEraCache() manually after edits for an
+ * immediate refresh instead of relying on this expiring.
+ */
+var CACHE_TTL_SECONDS = 5 * 60;
+
+/** CacheService values are capped at 100KB each, so large JSON is split into chunks. */
+var CACHE_KEY_PREFIX = "eraJson_";
+var CACHE_CHUNK_SIZE = 90 * 1024;
+
+function readEraCache() {
+  const cache = CacheService.getScriptCache();
+  const meta = cache.get(CACHE_KEY_PREFIX + "meta");
+  if (!meta) return null;
+
+  const chunkCount = Number(meta);
+  const keys = [];
+  for (let i = 0; i < chunkCount; i++) keys.push(CACHE_KEY_PREFIX + i);
+
+  const found = cache.getAll(keys);
+  if (Object.keys(found).length !== chunkCount) return null; // partially expired
+
+  try {
+    return JSON.parse(keys.map(k => found[k]).join(""));
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeEraCache(result) {
+  const json = JSON.stringify(result);
+  const chunks = [];
+  for (let i = 0; i < json.length; i += CACHE_CHUNK_SIZE) {
+    chunks.push(json.slice(i, i + CACHE_CHUNK_SIZE));
+  }
+
+  const payload = { [CACHE_KEY_PREFIX + "meta"]: String(chunks.length) };
+  chunks.forEach((chunk, i) => { payload[CACHE_KEY_PREFIX + i] = chunk; });
+
+  CacheService.getScriptCache().putAll(payload, CACHE_TTL_SECONDS);
+}
+
+/** Run manually (Apps Script editor > Run) after editing the sheet to force fresh data immediately. */
+function clearEraCache() {
+  const cache = CacheService.getScriptCache();
+  const meta = cache.get(CACHE_KEY_PREFIX + "meta");
+  if (!meta) return;
+
+  const chunkCount = Number(meta);
+  const keys = [CACHE_KEY_PREFIX + "meta"];
+  for (let i = 0; i < chunkCount; i++) keys.push(CACHE_KEY_PREFIX + i);
+  cache.removeAll(keys);
+}
 
 /**
  * Converts a RichTextValue cell into an HTML string.
@@ -76,6 +141,11 @@ function richTextToHtml(richText) {
 }
 
 function doGet(e) {
+  const cached = readEraCache();
+  if (cached) {
+    return jsonpOrJson(e, cached);
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(STATE_ERAS_SHEET);
   if (!sheet) {
@@ -90,19 +160,26 @@ function doGet(e) {
     return jsonpOrJson(e, { [STATE_ERAS_SHEET]: [] });
   }
 
-  // TWO API calls total: one for plain values, one for all rich text.
-  // Previously: one getValues() + one getRichTextValues() per rich-text column.
-  const plainValues    = range.getValues();
-  const richTextValues = range.getRichTextValues();
-
+  const plainValues = range.getValues();
   const headers = plainValues[0];
+  const numDataRows = numRows - 1;
 
-  // Build a Set of column indices that need rich-text processing
-  const richColIndices = new Set(
-    headers
-      .map((h, i) => RICH_TEXT_COLUMNS[h] ? i : null)
-      .filter(i => i !== null)
-  );
+  // Only fetch rich text for the specific columns that need it (see RICH_TEXT_COLUMNS).
+  // getRichTextValues() is per-cell expensive, so pulling it for every column instead
+  // of just these ~3 was a major source of slow load times.
+  const richColIndices = headers
+    .map((h, i) => RICH_TEXT_COLUMNS[h] ? i : null)
+    .filter(i => i !== null);
+
+  const richTextByCol = {}; // colIndex -> array of RichTextValue, one per data row
+  if (numDataRows > 0) {
+    richColIndices.forEach(colIndex => {
+      richTextByCol[colIndex] = sheet
+        .getRange(2, colIndex + 1, numDataRows, 1)
+        .getRichTextValues()
+        .map(r => r[0]);
+    });
+  }
 
   const items = plainValues
     .slice(1) // skip header row
@@ -110,16 +187,17 @@ function doGet(e) {
     .filter(({ row }) => row.some(cell => cell !== "")) // skip blank rows
     .map(({ row, rowIndex }) => {
       const item = {};
-      const richRow = richTextValues[rowIndex + 1]; // +1 to skip header
       headers.forEach((key, i) => {
-        item[key] = richColIndices.has(i)
-          ? richTextToHtml(richRow[i])
+        item[key] = richTextByCol[i]
+          ? richTextToHtml(richTextByCol[i][rowIndex])
           : row[i];
       });
       return item;
     });
 
-  return jsonpOrJson(e, { [STATE_ERAS_SHEET]: items });
+  const result = { [STATE_ERAS_SHEET]: items };
+  writeEraCache(result);
+  return jsonpOrJson(e, result);
 }
 
 function jsonpOrJson(e, result) {
