@@ -1,148 +1,105 @@
 /**
- * Archived: "States with Federal Ratification" toggle + outer outline mesh.
- * Uses sheet column "Federal Ratification Status" ("Ratified" | "Not Ratified").
+ * Archived: color palette switcher + alternate palette options.
  * Not loaded by the live map — kept here for reference / possible restore.
+ *
+ * Note: the Federal Ratification toggle previously archived here has been
+ * restored into app.js / index.html.
  */
 
-/* --- HTML (place inside #map-controls, left side) ---
-<div id="ratification-toggle">
-  <label for="federal-ratification-toggle">
-    <input type="checkbox" id="federal-ratification-toggle" />
-    <span class="toggle-track" aria-hidden="true"></span>
-    States with Federal Ratification
-  </label>
+/* --- HTML (place inside #map-controls, right side) ---
+<div id="palette-selector">
+  <label for="palette-select">Color palette</label>
+  <select id="palette-select" aria-label="Color palette"></select>
 </div>
 --- */
 
 /* --- CSS ---
-.toggle-track {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  flex-shrink: 0;
-  border: 2px solid #000;
-  background: #ebebeb;
-  box-sizing: border-box;
-  transition: background 0.2s ease;
+#palette-selector {
+  text-align: right;
+  font-size: var(--font-size-base);
 }
 
-.toggle-track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  background: #000;
-  transition: transform 0.2s ease;
+#palette-selector label {
+  margin-right: 8px;
 }
 
-#ratification-toggle input:checked + .toggle-track {
-  background: #2f3a72;
+#palette-select {
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  padding: 4px 8px;
 }
 
-#ratification-toggle input:checked + .toggle-track::after {
-  background: #fff;
-  transform: translateX(18px);
-}
-
-#ratification-toggle input:focus-visible + .toggle-track {
-  outline: 2px solid #000;
-  outline-offset: 2px;
-}
-
-#ratification-toggle {
-  display: flex;
-  align-items: center;
-}
-
-#ratification-toggle label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  user-select: none;
-}
-
-#ratification-toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+#map-controls {
+  justify-content: space-between;
 }
 --- */
 
-const RATIFIED_STATUS = "Ratified";
-let showFederalRatification = false;
+const COLOR_PALETTES = {
+  // Ltd/Full/Expanded are unified around #209f57: Ltd = striped, Full = solid, Expanded = navy→dark green gradient
+  current: ["#c4c4c4", "#E36A93", "ltd-stripes", "#209f57", "expanded-gradient"],
+  option1: ["#F5ECC2", "#B7C2A9", "#D6B43E", "#064F6E", "#C53C69"],
+  option2: ["#E4E4E4", "#C19F2C", "#C3CD9D", "#437742", "#0D1C43"],
+  option3: ["#A8A8A8", "#FDBF68", "#C16B27", "#A5C8D1", "#064F6E"],
+  option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"],
+  option5: ["#c4c4c4", "#E36A93", "ltd-stripes", "#209f57", "expanded-gradient"],
+};
 
-// mapUI fields used by this feature:
-//   ratificationOutline, topology
+const PALETTE_LABELS = {
+  current: "Current",
+  option1: "Option 1",
+  option2: "Option 2",
+  option3: "Option 3",
+  option4: "Option 4",
+  option5: "Option 5"
+};
 
-function isFederallyRatified(row) {
-  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
-}
+let activePaletteKey = "current";
 
-function isStateFullyOpaque(row) {
-  if (showFederalRatification && !isFederallyRatified(row)) return false;
-  if (activeFilters.size === 0) return true;
-  const era = getEraType(row);
-  return !!(era && activeFilters.has(era));
-}
+// Live map uses a single fixed range instead:
+//   const ERA_COLORS = COLOR_PALETTES.current;
+//   color.range(ERA_COLORS)
 
-// In renderMap, after state borders, before hover outlineLayer:
-function createRatificationOutlineLayer(mapLayer, us, path) {
-  const ratificationOutline = mapLayer.append("path")
-    .attr("class", "ratification-outline")
-    .attr("fill", "none")
-    .attr("stroke", "#000")
-    .attr("stroke-width", 2)
-    .attr("stroke-linejoin", "round")
-    .attr("pointer-events", "none")
-    .attr("visibility", "hidden");
+function applyPalette(key) {
+  const palette = COLOR_PALETTES[key];
+  if (!palette) return;
 
-  mapUI.ratificationOutline = ratificationOutline;
-  mapUI.topology = us;
-  return ratificationOutline;
-}
+  activePaletteKey = key;
+  color.range(palette);
 
-function updateMapOpacityWithRatification(statePaths, lookup) {
-  statePaths.attr("opacity", d => {
-    return isStateFullyOpaque(lookup.get(d.properties.name)) ? 1 : 0.15;
-  });
-  updateRatificationOutline();
-}
-
-function updateRatificationOutline() {
-  const outline = mapUI.ratificationOutline;
-  const us = mapUI.topology;
-  const lookup = mapUI.lookup;
-  if (!outline || !us || !mapUI.path) return;
-
-  if (!showFederalRatification || !lookup) {
-    outline.attr("d", null).attr("visibility", "hidden");
-    return;
+  if (mapUI.statePaths && mapUI.lookup) {
+    applyMapColors(mapUI.statePaths, mapUI.lookup);
   }
 
-  // Outer perimeter only: exterior edges of opaque states, plus borders
-  // between opaque and non-opaque — no shared interior borders.
-  const mesh = topojson.mesh(us, us.objects.states, (a, b) => {
-    const aOn = isStateFullyOpaque(lookup.get(a.properties.name));
-    if (a === b) return aOn;
-    const bOn = isStateFullyOpaque(lookup.get(b.properties.name));
-    return aOn !== bOn;
-  });
+  d3.select("#filters")
+    .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
+    .each(function (d) {
+      applyFilterButtonColor(d3.select(this), color(d));
+    });
 
-  outline
-    .datum(mesh)
-    .attr("d", mapUI.path)
-    .attr("visibility", "visible");
+  const panel = d3.select("#state-panel");
+  if (panel.classed("visible")) {
+    const status = panel.select(".state-panel-status").text();
+    if (status) {
+      applySwatchBackground(panel.select(".state-panel-swatch"), color(status));
+    }
+  }
 }
 
-function initRatificationToggle(statePaths, lookup) {
-  d3.select("#federal-ratification-toggle").on("change", function () {
-    showFederalRatification = this.checked;
-    updateMapOpacityWithRatification(statePaths, lookup);
+function initPaletteSelector() {
+  const select = d3.select("#palette-select");
+
+  select.selectAll("option")
+    .data(Object.keys(COLOR_PALETTES))
+    .join("option")
+    .attr("value", d => d)
+    .text(d => PALETTE_LABELS[d]);
+
+  select.property("value", activePaletteKey);
+
+  select.on("change", function () {
+    applyPalette(this.value);
   });
 }
+
+// Call after renderMap():
+//   initPaletteSelector();
