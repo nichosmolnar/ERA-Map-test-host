@@ -1,4 +1,4 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyDF-t09y4Zskw-0y457nVa8YV4sOLjm9AiSkfOuAWhzoiBzXylh53lCyT6aDmhi4V2CQ/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbxDwWXY58ZV4Je44i7jH_T0utO2ZUR9tbBTm-xV0UHuGvMIvXSyM5z7ZmSQn_C6u01EMQ/exec";
 const SHEET_CACHE_KEY = "era-federal-map-sheet-cache";
 const SHEET_CACHE_TTL_MS = 60 * 1000;
 const TOPO_URL = "https://static.observableusercontent.com/files/8326f37ebb0e430088bde96410bb0426ff6a71b3a592bb20987200ca00f8be73a0083b26ab17cb714ce111f936f695b96e77faffc560a0071d839e0742bb54f5";
@@ -7,6 +7,14 @@ const MAP_HEIGHT = 610;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
 const RATIFIED_FILL = "#2f3a72";
 const RATIFIED_STATUS = "Ratified";
+
+// Sheet column for place name (states + territories). Older exports used "State".
+const PLACE_NAME_KEY = "State & Territory";
+// Topology / geo-albers-usa-territories names that differ from the sheet labels.
+const PLACE_NAME_ALIASES = {
+  "U.S. Virgin Islands": "United States Virgin Islands",
+  "Northern Mariana Islands": "Commonwealth of the Northern Mariana Islands"
+};
 
 const buildTerritoriesProjection = geoAlbersUsaTerritories.geoAlbersUsaTerritories;
 const PROJECTION_SCALE = 1200;
@@ -88,6 +96,23 @@ function loadSheetData() {
 
 function isFederallyRatified(row) {
   return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
+}
+
+function getPlaceName(row) {
+  if (!row) return null;
+  return row[PLACE_NAME_KEY] || row.State || null;
+}
+
+function buildPlaceLookup(stateData) {
+  const lookup = new Map();
+  stateData.forEach(d => {
+    const name = getPlaceName(d);
+    if (!name) return;
+    lookup.set(name, d);
+    const alias = PLACE_NAME_ALIASES[name];
+    if (alias) lookup.set(alias, d);
+  });
+  return lookup;
 }
 
 function territoryBoxRect(region) {
@@ -202,7 +227,7 @@ function hideMapLoading() {
 
 function applySheetData(sheetData, statePaths) {
   const stateData = sheetData["State ERAs"];
-  const lookup = new Map(stateData.map(d => [d.State, d]));
+  const lookup = buildPlaceLookup(stateData);
   applyMapColors(statePaths, lookup);
   hideMapLoading();
 }
