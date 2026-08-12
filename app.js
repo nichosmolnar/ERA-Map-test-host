@@ -1,4 +1,4 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyDF-t09y4Zskw-0y457nVa8YV4sOLjm9AiSkfOuAWhzoiBzXylh53lCyT6aDmhi4V2CQ/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbxDwWXY58ZV4Je44i7jH_T0utO2ZUR9tbBTm-xV0UHuGvMIvXSyM5z7ZmSQn_C6u01EMQ/exec";
 const SHEET_CACHE_KEY = "era-map-sheet-cache";
 const SHEET_CACHE_TTL_MS = 60 * 1000;
 const TOPO_URL = "https://static.observableusercontent.com/files/8326f37ebb0e430088bde96410bb0426ff6a71b3a592bb20987200ca00f8be73a0083b26ab17cb714ce111f936f695b96e77faffc560a0071d839e0742bb54f5";
@@ -20,20 +20,13 @@ function mapTransition(mapLayer) {
 const ERA_TYPES = [
   "No State ERA",
   "Ongoing Campaign",
-  "Ltd. Gender Equality Provisions",
+  "Limited ERA",
   "Full State ERA",
   "Expanded ERA"
 ];
 
-const COLOR_PALETTES = {
-  // Ltd = mid green; Full = dark green; Expanded = navy→dark green gradient
-  current: ["#c4c4c4", "#E36A93", "#209f57", "#0B5C3A", "expanded-gradient"],
-  option1: ["#F5ECC2", "#B7C2A9", "#D6B43E", "#064F6E", "#C53C69"],
-  option2: ["#E4E4E4", "#C19F2C", "#C3CD9D", "#437742", "#0D1C43"],
-  option3: ["#A8A8A8", "#FDBF68", "#C16B27", "#A5C8D1", "#064F6E"],
-  option4: ["#EEEEEE", "#004F46", "#FFDD00", "#78CDD0", "#004F46"],
-  option5: ["#c4c4c4", "#E36A93", "#209f57", "#0B5C3A", "expanded-gradient"],
-};
+// Ltd/Full/Expanded are unified around #209f57: Ltd = striped, Full = solid, Expanded = navy→dark green gradient
+const ERA_COLORS = ["#c4c4c4", "#E36A93", "ltd-stripes", "#209f57", "expanded-gradient"];
 
 const EXPANDED_GRADIENT_SENTINEL = "expanded-gradient";
 const EXPANDED_GRADIENT_ID = "expanded-gradient";
@@ -49,30 +42,38 @@ const EXPANDED_GRADIENT_STOPS = [
 ];
 const EXPANDED_CSS_GRADIENT = `linear-gradient(90deg, ${EXPANDED_GRADIENT_STOPS.map(s => s.color).join(", ")})`;
 
-const PALETTE_LABELS = {
-  current: "Current",
-  option1: "Option 1",
-  option2: "Option 2",
-  option3: "Option 3",
-  option4: "Option 4",
-  option5: "Option 5"
-};
-
-let activePaletteKey = "current";
+const LTD_STRIPES_SENTINEL = "ltd-stripes";
+const LTD_STRIPES_ID = "ltd-stripes";
+const LTD_STRIPES_COLOR = "#209f57";
+const LTD_STRIPES_BG_COLOR = "#c4c4c4"; // Matches the "No State ERA" grey.
+const LTD_STRIPES_WIDTH = 5;
+const LTD_STRIPES_ANGLE = 45;
+const LTD_STRIPES_CSS_PATTERN = `repeating-linear-gradient(${LTD_STRIPES_ANGLE}deg, ${LTD_STRIPES_COLOR} 0, ${LTD_STRIPES_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH * 2}px)`;
 
 const ERA_PROTECTION_TYPES = [
-  "Ltd. Gender Equality Provisions",
+  "Limited ERA",
   "Full State ERA",
   "Expanded ERA"
 ];
 const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
 const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
-const FILTER_GROUP_LABEL = "Has constitutional gender-equality protections";
+const FILTER_GROUP_LABEL = "States with Equal Rights Amendments (ERA)";
+
+// Sheet column for place name (states + territories). Older exports used "State".
+const PLACE_NAME_KEY = "State & Territory";
+// Topology / geo-albers-usa-territories names that differ from the sheet labels.
+const PLACE_NAME_ALIASES = {
+  "U.S. Virgin Islands": "United States Virgin Islands",
+  "Northern Mariana Islands": "Commonwealth of the Northern Mariana Islands"
+};
 
 const color = d3.scaleOrdinal()
   .domain(ERA_TYPES)
-  .range(COLOR_PALETTES.current)
+  .range(ERA_COLORS)
   .unknown("#f0f0f0");
+
+const RATIFIED_STATUS = "Ratified";
+let showFederalRatification = false;
 
 const activeFilters = new Set();
 const mapUI = {
@@ -80,6 +81,8 @@ const mapUI = {
   tooltip: null,
   statePaths: null,
   outlineLayer: null,
+  ratificationOutline: null,
+  topology: null,
   path: null,
   activeTab: "provision",
   zoomOut: null,
@@ -163,17 +166,44 @@ function textColor(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#222" : "#fff";
 }
 
+function getPlaceName(row) {
+  if (!row) return null;
+  return row[PLACE_NAME_KEY] || row.State || null;
+}
+
+function buildPlaceLookup(stateData) {
+  const lookup = new Map();
+  stateData.forEach(d => {
+    const name = getPlaceName(d);
+    if (!name) return;
+    lookup.set(name, d);
+    const alias = PLACE_NAME_ALIASES[name];
+    if (alias) lookup.set(alias, d);
+  });
+  return lookup;
+}
+
 function getEraType(row) {
   return row ? row["State ERA type"] : null;
+}
+
+function isFederallyRatified(row) {
+  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
 }
 
 function isExpandedGradient(value) {
   return value === EXPANDED_GRADIENT_SENTINEL;
 }
 
+function isLtdStripes(value) {
+  return value === LTD_STRIPES_SENTINEL;
+}
+
 function svgFill(era) {
   const value = color(era);
-  return isExpandedGradient(value) ? `url(#${EXPANDED_GRADIENT_ID})` : value;
+  if (isExpandedGradient(value)) return `url(#${EXPANDED_GRADIENT_ID})`;
+  if (isLtdStripes(value)) return `url(#${LTD_STRIPES_ID})`;
+  return value;
 }
 
 function applySwatchBackground(selection, value) {
@@ -181,6 +211,10 @@ function applySwatchBackground(selection, value) {
     selection
       .style("background-color", null)
       .style("background-image", EXPANDED_CSS_GRADIENT);
+  } else if (isLtdStripes(value)) {
+    selection
+      .style("background-color", null)
+      .style("background-image", LTD_STRIPES_CSS_PATTERN);
   } else {
     selection
       .style("background-image", null)
@@ -189,7 +223,9 @@ function applySwatchBackground(selection, value) {
 }
 
 function applyFilterButtonColor(selection, value) {
-  const fill = isExpandedGradient(value) ? EXPANDED_CSS_GRADIENT : value;
+  let fill = value;
+  if (isExpandedGradient(value)) fill = EXPANDED_CSS_GRADIENT;
+  else if (isLtdStripes(value)) fill = LTD_STRIPES_CSS_PATTERN;
   selection
     .style("--btn-fill", fill)
     .style("--btn-on-fill-text", textColor(value))
@@ -369,6 +405,49 @@ function renderTerritoryBoxes(mapLayer, states, path) {
   return hitAreas;
 }
 
+// Outlines the exterior perimeter of federally-ratified states (toggled via
+// #federal-ratification-toggle). Kept empty/hidden until the toggle is on.
+function createRatificationOutlineLayer(mapLayer, us) {
+  const ratificationOutline = mapLayer.append("path")
+    .attr("class", "ratification-outline")
+    .attr("fill", "none")
+    .attr("stroke", "#000")
+    .attr("stroke-width", 2)
+    .attr("stroke-linejoin", "round")
+    .attr("pointer-events", "none")
+    .attr("visibility", "hidden");
+
+  mapUI.ratificationOutline = ratificationOutline;
+  mapUI.topology = us;
+  return ratificationOutline;
+}
+
+function updateRatificationOutline() {
+  const outline = mapUI.ratificationOutline;
+  const us = mapUI.topology;
+  const lookup = mapUI.lookup;
+  if (!outline || !us || !mapUI.path) return;
+
+  if (!showFederalRatification || !lookup) {
+    outline.attr("d", null).attr("visibility", "hidden");
+    return;
+  }
+
+  // Outer perimeter only: exterior edges of opaque states, plus borders
+  // between opaque and non-opaque — no shared interior borders.
+  const mesh = topojson.mesh(us, us.objects.states, (a, b) => {
+    const aOn = isStateFullyOpaque(lookup.get(a.properties.name));
+    if (a === b) return aOn;
+    const bOn = isStateFullyOpaque(lookup.get(b.properties.name));
+    return aOn !== bOn;
+  });
+
+  outline
+    .datum(mesh)
+    .attr("d", mapUI.path)
+    .attr("visibility", "visible");
+}
+
 function renderMap(us) {
   const projection = buildTerritoriesProjection()
     .scale(PROJECTION_SCALE)
@@ -395,6 +474,28 @@ function renderMap(us) {
     .attr("offset", d => d.offset)
     .attr("stop-color", d => d.color);
 
+  // The pattern's un-rotated stripes run vertically, matching CSS's
+  // repeating-linear-gradient(90deg, ...) used for the buttons/swatch.
+  // Subtracting 90 from LTD_STRIPES_ANGLE keeps this pattern's tilt in sync
+  // with that CSS angle (they use opposite rotation conventions).
+  const stripes = svg.select("defs")
+    .append("pattern")
+    .attr("id", LTD_STRIPES_ID)
+    .attr("patternUnits", "userSpaceOnUse")
+    .attr("width", LTD_STRIPES_WIDTH * 2)
+    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("patternTransform", `rotate(${LTD_STRIPES_ANGLE - 90})`);
+
+  stripes.append("rect")
+    .attr("width", LTD_STRIPES_WIDTH * 2)
+    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("fill", LTD_STRIPES_BG_COLOR);
+
+  stripes.append("rect")
+    .attr("width", LTD_STRIPES_WIDTH)
+    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("fill", LTD_STRIPES_COLOR);
+
   const mapLayer = svg.append("g").attr("class", "map-layer");
 
   const statePaths = mapLayer.append("g")
@@ -412,6 +513,8 @@ function renderMap(us) {
     .attr("stroke", "#fff")
     .attr("stroke-linejoin", "round")
     .attr("d", path);
+
+  createRatificationOutlineLayer(mapLayer, us);
 
   const outlineLayer = mapLayer.append("g").attr("class", "state-outline");
   mapUI.outlineLayer = outlineLayer;
@@ -483,28 +586,30 @@ function showStatePanel(row) {
 
   const panel = d3.select("#state-panel");
   const era = row["State ERA type"];
-  const review = (row["Federal Standard of Review"] || "").trim();
-  const cases = (row["Sex Equality Cases"] || "").trim();
-  const provisionContext = (row["Constitution Context"] || "").trim();
+  const review = (row["Standard of Review"] || row["Federal Standard of Review"] || "").trim();
+  const cases = (row["Case Law"] || row["Sex Equality Cases"] || "").trim();
+  const provisionContext = (
+    row["ERA Background & Context"] || row["Constitution Context"] || ""
+  ).trim();
 
-  panel.select(".state-panel-name").text(row.State);
+  panel.select(".state-panel-name").text(getPlaceName(row) || "");
   panel.select(".state-panel-status").text(era || "Unknown");
   applySwatchBackground(panel.select(".state-panel-swatch"), color(era));
 
   setPaneContent(
     panel.select('[data-pane="review"]'),
     review,
-    "No federal standard of review information available."
+    "No standard of review information available."
   );
   setPaneContent(
     panel.select('[data-pane="cases"]'),
     cases,
-    "No sex equality cases available."
+    "No case law available."
   );
   setPaneContent(
     panel.select('[data-pane="provision"]'),
     provisionContext,
-    "No constitution context available."
+    "No ERA background available."
   );
 
   panel.selectAll(".state-panel-tab")
@@ -552,70 +657,21 @@ function applyMapColors(statePaths, lookup) {
   statePaths.attr("fill", d => svgFill(getEraType(lookup.get(d.properties.name))));
 }
 
-function applyPalette(key) {
-  const palette = COLOR_PALETTES[key];
-  if (!palette) return;
-
-  activePaletteKey = key;
-  color.range(palette);
-
-  if (mapUI.statePaths && mapUI.lookup) {
-    applyMapColors(mapUI.statePaths, mapUI.lookup);
-  }
-
-  d3.select("#filters")
-    .selectAll("button.filter-btn:not(.filter-btn--placeholder)")
-    .each(function (d) {
-      applyFilterButtonColor(d3.select(this), color(d));
-    });
-
-  const panel = d3.select("#state-panel");
-  if (panel.classed("visible")) {
-    const status = panel.select(".state-panel-status").text();
-    if (status) {
-      applySwatchBackground(panel.select(".state-panel-swatch"), color(status));
-    }
-  }
-}
-
-function initPaletteSelector() {
-  const select = d3.select("#palette-select");
-
-  select.selectAll("option")
-    .data(Object.keys(COLOR_PALETTES))
-    .join("option")
-    .attr("value", d => d)
-    .text(d => PALETTE_LABELS[d]);
-
-  select.property("value", activePaletteKey);
-
-  select.on("change", function () {
-    applyPalette(this.value);
-  });
+function isStateFullyOpaque(row) {
+  if (showFederalRatification && !isFederallyRatified(row)) return false;
+  if (activeFilters.size === 0) return true;
+  const era = getEraType(row);
+  return !!(era && activeFilters.has(era));
 }
 
 function updateMapOpacity(statePaths, lookup) {
-  const filtering = activeFilters.size > 0;
-  statePaths.attr("opacity", d => {
-    const era = getEraType(lookup.get(d.properties.name));
-    if (!filtering) return 1;
-    return era && activeFilters.has(era) ? 1 : 0.15;
-  });
+  statePaths.attr("opacity", d => isStateFullyOpaque(lookup.get(d.properties.name)) ? 1 : 0.15);
+  updateRatificationOutline();
 }
 
 function showMapControls() {
   d3.select("#map-controls")
     .classed("ready", true)
-    .attr("aria-hidden", null);
-}
-
-function allProtectionFiltersActive() {
-  return ERA_PROTECTION_TYPES.every(t => activeFilters.has(t));
-}
-
-function revealFilterGroupToggle(root) {
-  root.select(".filter-group-toggle")
-    .property("disabled", false)
     .attr("aria-hidden", null);
 }
 
@@ -653,26 +709,23 @@ function renderFilters(counts, statePaths, lookup) {
       .attr("class", "filter-group")
       .attr("role", "group")
       .attr("aria-label", FILTER_GROUP_LABEL);
-    group.append("button")
-      .attr("type", "button")
+    group.append("div")
       .attr("class", "filter-group-toggle")
-      .attr("aria-hidden", "true")
-      .attr("aria-pressed", "false")
-      .property("disabled", true)
-      .html(`
-        <span class="filter-group-toggle-label">${FILTER_GROUP_LABEL}</span>
-        <span class="filter-group-toggle-bar" aria-hidden="true"></span>
-      `);
+      .attr("aria-hidden", "true");
     group.append("div").attr("class", "filter-group-buttons");
   }
 
+  const protectionTotal = ERA_PROTECTION_TYPES.reduce((sum, t) => sum + (counts[t] || 0), 0);
+  group.select(".filter-group-toggle")
+    .classed("filter-group-toggle--placeholder", false)
+    .html(`
+      <span class="label">${FILTER_GROUP_LABEL}</span>
+      <span class="count">${protectionTotal}</span>
+    `);
+
   const refresh = () => {
-    const groupActive = allProtectionFiltersActive();
     root.selectAll("button.filter-btn")
       .classed("active", d => activeFilters.has(d));
-    group.select(".filter-group-toggle")
-      .classed("active", groupActive)
-      .attr("aria-pressed", groupActive);
     updateMapOpacity(statePaths, lookup);
   };
 
@@ -687,16 +740,6 @@ function renderFilters(counts, statePaths, lookup) {
     .join("button");
   bindFilterButtons(outerButtons, counts, refresh);
 
-  group.select(".filter-group-toggle").on("click", () => {
-    if (allProtectionFiltersActive()) {
-      ERA_PROTECTION_TYPES.forEach(t => activeFilters.delete(t));
-    } else {
-      ERA_PROTECTION_TYPES.forEach(t => activeFilters.add(t));
-    }
-    refresh();
-  });
-
-  revealFilterGroupToggle(root);
   refresh();
 }
 
@@ -720,7 +763,7 @@ function showTooltip(tooltip, event, row) {
   const hover = (row.HOVER || "").trim();
 
   tooltip.html(`
-    <div class="tooltip-name">${row.State}</div>
+    <div class="tooltip-name">${getPlaceName(row) || ""}</div>
     ${hover
       ? `<div class="tooltip-background">${hover}</div>`
       : `<div class="tooltip-background"><em>No information available.</em></div>`}
@@ -868,6 +911,13 @@ function attachTooltip(statePaths, lookup, tooltip) {
   mapUI.handleFeatureLeave = handleFeatureLeave;
 }
 
+function initRatificationToggle(statePaths, lookup) {
+  d3.select("#federal-ratification-toggle").on("change", function () {
+    showFederalRatification = this.checked;
+    updateMapOpacity(statePaths, lookup);
+  });
+}
+
 function hideMapLoading() {
   d3.select("#map-loading").classed("hidden", true);
 }
@@ -876,7 +926,7 @@ function applySheetData(sheetData, statePaths, tooltip) {
   console.log("Sheet data:", sheetData);
 
   const stateData = sheetData["State ERAs"];
-  const lookup = new Map(stateData.map(d => [d.State, d]));
+  const lookup = buildPlaceLookup(stateData);
   const counts = countByCategory(stateData);
 
   mapUI.lookup = lookup;
@@ -885,6 +935,7 @@ function applySheetData(sheetData, statePaths, tooltip) {
   applyMapColors(statePaths, lookup);
   renderFilters(counts, statePaths, lookup);
   attachTooltip(statePaths, lookup, tooltip);
+  initRatificationToggle(statePaths, lookup);
   showMapControls();
   hideMapLoading();
 }
@@ -903,7 +954,6 @@ fetch(TOPO_URL)
   .then(us => {
     const { statePaths } = renderMap(us);
     mapUI.statePaths = statePaths;
-    initPaletteSelector();
     const tooltip = createTooltip();
     mapUI.tooltip = tooltip;
 

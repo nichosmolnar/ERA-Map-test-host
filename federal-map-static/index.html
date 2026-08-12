@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Federal Ratification Map</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Teachers:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    #viz {
+      --font-size-base: 14px;
+      --font-size-hero: 38px;
+      --font-serif: "Libre Baskerville", "Times New Roman", Times, serif;
+      max-width: 975px;
+      margin: 0 auto;
+      padding: 16px;
+      position: relative;
+      font-size: var(--font-size-base);
+      line-height: 1.4;
+    }
+
+    body {
+      margin: 0;
+      background: #fff;
+      font-family: "Teachers", sans-serif;
+    }
+
+    #map-title {
+      font-family: var(--font-serif);
+      font-size: var(--font-size-hero);
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: left;
+      margin: 0 0 16px;
+      color: #222;
+    }
+
+    #map-frame {
+      position: relative;
+      border: 1px solid #000;
+      aspect-ratio: 975 / 610;
+      overflow: hidden;
+    }
+
+    #map-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.85);
+      font-size: var(--font-size-base);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    #map-loading.hidden {
+      display: none;
+    }
+
+    #map svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+    }
+
+    #map path.state {
+      transition: fill 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div id="viz">
+    <h1 id="map-title">States with Federal Ratification</h1>
+    <div id="map-frame">
+      <div id="map-loading">Map loading</div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/combine/npm/d3-color@3/dist/d3-color.min.js,npm/d3-dispatch@3/dist/d3-dispatch.min.js,npm/d3-ease@3/dist/d3-ease.min.js,npm/d3-interpolate@3/dist/d3-interpolate.min.js,npm/d3-selection@3/dist/d3-selection.min.js,npm/d3-timer@3/dist/d3-timer.min.js,npm/d3-transition@3/dist/d3-transition.min.js,npm/d3-array@3/dist/d3-array.min.js,npm/d3-format@3/dist/d3-format.min.js,npm/d3-time@3/dist/d3-time.min.js,npm/d3-time-format@4/dist/d3-time-format.min.js,npm/d3-scale@4/dist/d3-scale.min.js,npm/d3-geo@3/dist/d3-geo.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://unpkg.com/geo-albers-usa-territories@0.1.0/dist/geo-albers-usa-territories.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
