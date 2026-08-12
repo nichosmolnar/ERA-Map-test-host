@@ -4,13 +4,13 @@
  * Most cells are exported as plain strings via getValues().
  * Only these columns keep Google Sheets rich-text formatting as HTML
  * (<strong>, <em>, <u>, <s>, <a>):
- *   - Constitution Context
- *   - Sex Equality Cases
- *   - Federal Standard of Review
+ *   - ERA Background & Context
+ *   - Case Law
+ *   - Standard of Review
  *
  * Output shape:
  * {
- *   "State ERAs": [ { "State": "Alabama", "Sex Equality Cases": "<em>…</em>", … }, … ]
+ *   "State ERAs": [ { "State & Territory": "Alabama", "Case Law": "<em>…</em>", … }, … ]
  * }
  *
  * Perf notes:
@@ -29,6 +29,7 @@
  *
  * After changing the script or access settings, create a NEW deployment (or "Manage deployments"
  * > edit > New version) — updating the code alone does not update the live /exec URL.
+
  *
  * Test in browser (should show JSON, not "Access Denied"):
  *   https://YOUR_DEPLOYMENT_ID/exec?callback=test
@@ -38,9 +39,9 @@ var STATE_ERAS_SHEET = "State ERAs";
 
 /** Columns that should preserve sheet bold/italic/etc. as HTML. */
 var RICH_TEXT_COLUMNS = {
-  "Constitution Context": true,
-  "Sex Equality Cases": true,
-  "Federal Standard of Review": true
+  "ERA Background & Context": true,
+  "Case Law": true,
+  "Standard of Review": true
 };
 
 /**
@@ -141,9 +142,12 @@ function richTextToHtml(richText) {
 }
 
 function doGet(e) {
-  const cached = readEraCache();
-  if (cached) {
-    return jsonpOrJson(e, cached);
+  const skipCache = e && e.parameter && String(e.parameter.nocache) === "1";
+  if (!skipCache) {
+    const cached = readEraCache();
+    if (cached) {
+      return jsonpOrJson(e, cached);
+    }
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -161,7 +165,8 @@ function doGet(e) {
   }
 
   const plainValues = range.getValues();
-  const headers = plainValues[0];
+  // Trim headers so trailing spaces in the sheet don't silently disable rich text.
+  const headers = plainValues[0].map(h => String(h || "").trim());
   const numDataRows = numRows - 1;
 
   // Only fetch rich text for the specific columns that need it (see RICH_TEXT_COLUMNS).
@@ -195,8 +200,14 @@ function doGet(e) {
       return item;
     });
 
-  const result = { [STATE_ERAS_SHEET]: items };
-  writeEraCache(result);
+  const result = {
+    [STATE_ERAS_SHEET]: items,
+    // Lets you confirm the live deployment matched the expected rich-text columns.
+    _meta: {
+      richTextColumnsMatched: richColIndices.map(i => headers[i])
+    }
+  };
+  if (!skipCache) writeEraCache(result);
   return jsonpOrJson(e, result);
 }
 

@@ -1,4 +1,4 @@
-const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbyDF-t09y4Zskw-0y457nVa8YV4sOLjm9AiSkfOuAWhzoiBzXylh53lCyT6aDmhi4V2CQ/exec";
+const SHEET_DATA_URL = "https://script.google.com/macros/s/AKfycbxDwWXY58ZV4Je44i7jH_T0utO2ZUR9tbBTm-xV0UHuGvMIvXSyM5z7ZmSQn_C6u01EMQ/exec";
 const SHEET_CACHE_KEY = "era-map-sheet-cache";
 const SHEET_CACHE_TTL_MS = 60 * 1000;
 const TOPO_URL = "https://static.observableusercontent.com/files/8326f37ebb0e430088bde96410bb0426ff6a71b3a592bb20987200ca00f8be73a0083b26ab17cb714ce111f936f695b96e77faffc560a0071d839e0742bb54f5";
@@ -20,7 +20,7 @@ function mapTransition(mapLayer) {
 const ERA_TYPES = [
   "No State ERA",
   "Ongoing Campaign",
-  "Ltd. Gender Equality Provisions",
+  "Limited ERA",
   "Full State ERA",
   "Expanded ERA"
 ];
@@ -51,13 +51,21 @@ const LTD_STRIPES_ANGLE = 45;
 const LTD_STRIPES_CSS_PATTERN = `repeating-linear-gradient(${LTD_STRIPES_ANGLE}deg, ${LTD_STRIPES_COLOR} 0, ${LTD_STRIPES_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH * 2}px)`;
 
 const ERA_PROTECTION_TYPES = [
-  "Ltd. Gender Equality Provisions",
+  "Limited ERA",
   "Full State ERA",
   "Expanded ERA"
 ];
 const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
 const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
 const FILTER_GROUP_LABEL = "States with Equal Rights Amendments (ERA)";
+
+// Sheet column for place name (states + territories). Older exports used "State".
+const PLACE_NAME_KEY = "State & Territory";
+// Topology / geo-albers-usa-territories names that differ from the sheet labels.
+const PLACE_NAME_ALIASES = {
+  "U.S. Virgin Islands": "United States Virgin Islands",
+  "Northern Mariana Islands": "Commonwealth of the Northern Mariana Islands"
+};
 
 const color = d3.scaleOrdinal()
   .domain(ERA_TYPES)
@@ -156,6 +164,23 @@ function textColor(hex) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#222" : "#fff";
+}
+
+function getPlaceName(row) {
+  if (!row) return null;
+  return row[PLACE_NAME_KEY] || row.State || null;
+}
+
+function buildPlaceLookup(stateData) {
+  const lookup = new Map();
+  stateData.forEach(d => {
+    const name = getPlaceName(d);
+    if (!name) return;
+    lookup.set(name, d);
+    const alias = PLACE_NAME_ALIASES[name];
+    if (alias) lookup.set(alias, d);
+  });
+  return lookup;
 }
 
 function getEraType(row) {
@@ -561,28 +586,30 @@ function showStatePanel(row) {
 
   const panel = d3.select("#state-panel");
   const era = row["State ERA type"];
-  const review = (row["Federal Standard of Review"] || "").trim();
-  const cases = (row["Sex Equality Cases"] || "").trim();
-  const provisionContext = (row["Constitution Context"] || "").trim();
+  const review = (row["Standard of Review"] || row["Federal Standard of Review"] || "").trim();
+  const cases = (row["Case Law"] || row["Sex Equality Cases"] || "").trim();
+  const provisionContext = (
+    row["ERA Background & Context"] || row["Constitution Context"] || ""
+  ).trim();
 
-  panel.select(".state-panel-name").text(row.State);
+  panel.select(".state-panel-name").text(getPlaceName(row) || "");
   panel.select(".state-panel-status").text(era || "Unknown");
   applySwatchBackground(panel.select(".state-panel-swatch"), color(era));
 
   setPaneContent(
     panel.select('[data-pane="review"]'),
     review,
-    "No federal standard of review information available."
+    "No standard of review information available."
   );
   setPaneContent(
     panel.select('[data-pane="cases"]'),
     cases,
-    "No sex equality cases available."
+    "No case law available."
   );
   setPaneContent(
     panel.select('[data-pane="provision"]'),
     provisionContext,
-    "No constitution context available."
+    "No ERA background available."
   );
 
   panel.selectAll(".state-panel-tab")
@@ -736,7 +763,7 @@ function showTooltip(tooltip, event, row) {
   const hover = (row.HOVER || "").trim();
 
   tooltip.html(`
-    <div class="tooltip-name">${row.State}</div>
+    <div class="tooltip-name">${getPlaceName(row) || ""}</div>
     ${hover
       ? `<div class="tooltip-background">${hover}</div>`
       : `<div class="tooltip-background"><em>No information available.</em></div>`}
@@ -899,7 +926,7 @@ function applySheetData(sheetData, statePaths, tooltip) {
   console.log("Sheet data:", sheetData);
 
   const stateData = sheetData["State ERAs"];
-  const lookup = new Map(stateData.map(d => [d.State, d]));
+  const lookup = buildPlaceLookup(stateData);
   const counts = countByCategory(stateData);
 
   mapUI.lookup = lookup;
