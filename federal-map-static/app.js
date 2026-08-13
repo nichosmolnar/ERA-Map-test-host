@@ -5,7 +5,7 @@ const TOPO_URL = "https://static.observableusercontent.com/files/8326f37ebb0e430
 const MAP_WIDTH = 975;
 const MAP_HEIGHT = 610;
 const MAP_PLACEHOLDER_FILL = "#e8e8e8";
-const RATIFIED_FILL = "#2f3a72";
+const RATIFIED_FILL = "#018a31";
 const RATIFIED_STATUS = "Ratified";
 
 // Sheet column for place name (states + territories). Older exports used "State".

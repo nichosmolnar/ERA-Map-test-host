@@ -14,8 +14,8 @@
       --font-size-lg: 16px;
       --font-size-sm: 13px;
       --font-size-xl: 21px;
-      --font-size-title: 24px;
-      --font-size-hero: 38px;
+      --font-size-title: 22px;
+      --font-size-hero: 26px;
       --font-serif: "Libre Baskerville", "Times New Roman", Times, serif;
       max-width: 975px;
       margin: 0 auto;
@@ -47,94 +47,7 @@
       gap: 8px;
       justify-content: flex-start;
       align-items: flex-end;
-      margin-bottom: 12px;
-    }
-
-    .filter-group {
-      position: relative;
-      min-width: 0;
-      box-sizing: border-box;
-    }
-
-    .filter-group-toggle {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      box-sizing: border-box;
-      margin: 0;
-      padding: 7px 10px;
-      border: 1px solid #000;
-      background: #209f57;
-      color: #fff;
-      font-family: inherit;
-      font-size: var(--font-size-lg);
-      font-weight: 600;
-      line-height: 1.3;
-      letter-spacing: 0.02em;
-      text-align: left;
-      pointer-events: none;
-      opacity: 1;
-      transform: scaleX(1);
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 1;
-    }
-
-    .filter-group-toggle .label {
-      min-width: 0;
-    }
-
-    .filter-group-toggle .count {
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 1.75em;
-      height: 1.75em;
-      border-radius: 50%;
-      background: #fff;
-      color: #000;
-      font-size: var(--font-size-sm);
-      font-weight: 600;
-      line-height: 1;
-    }
-
-    /* Match .filter-btn--placeholder until sheet data fills the bar. */
-    .filter-group-toggle--placeholder {
-      background: #ebebeb;
-      color: #222;
-      border-color: transparent;
-    }
-
-    .filter-group-toggle--placeholder .count {
-      background: #ccc;
-      color: #ccc;
-    }
-
-    .filter-group-buttons {
-      display: flex;
-      flex-wrap: nowrap;
-      gap: 8px;
-      align-items: stretch;
-      opacity: 0;
-      transform: scaleX(0.96);
-      pointer-events: none;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-    }
-
-    .filter-group:not(:has(.filter-group-toggle--placeholder)):hover .filter-group-toggle,
-    .filter-group:not(:has(.filter-group-toggle--placeholder)):focus-within .filter-group-toggle {
-      opacity: 0;
-      transform: scaleX(0.96);
-    }
-
-    .filter-group:not(:has(.filter-group-toggle--placeholder)):hover .filter-group-buttons,
-    .filter-group:not(:has(.filter-group-toggle--placeholder)):focus-within .filter-group-buttons {
-      opacity: 1;
-      transform: scaleX(1);
-      pointer-events: auto;
+      margin-bottom: 8px;
     }
 
     .filter-btn {
@@ -495,13 +408,32 @@
 
     .toggle-track {
       position: relative;
-      width: 40px;
+      width: 56px;
       height: 22px;
       flex-shrink: 0;
       border: 2px solid #000;
       background: #ebebeb;
       box-sizing: border-box;
       transition: background 0.2s ease;
+    }
+
+    .toggle-track::before {
+      content: "off";
+      position: absolute;
+      top: 0;
+      left: 18px;
+      right: 2px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #222;
+      pointer-events: none;
     }
 
     .toggle-track::after {
@@ -512,16 +444,23 @@
       width: 14px;
       height: 14px;
       background: #000;
-      transition: transform 0.2s ease;
+      transition: transform 0.2s ease, background 0.2s ease;
     }
 
     #ratification-toggle input:checked + .toggle-track {
-      background: #2f3a72;
+      background: #018a31;
+    }
+
+    #ratification-toggle input:checked + .toggle-track::before {
+      content: "on";
+      left: 2px;
+      right: 18px;
+      color: #fff;
     }
 
     #ratification-toggle input:checked + .toggle-track::after {
       background: #fff;
-      transform: translateX(18px);
+      transform: translateX(34px);
     }
 
     #ratification-toggle input:focus-visible + .toggle-track {
@@ -533,14 +472,6 @@
       #filters {
         flex-direction: column;
         flex-wrap: nowrap;
-      }
-
-      .filter-group {
-        width: 100%;
-      }
-
-      .filter-group-buttons {
-        flex-direction: column;
       }
 
       .filter-btn {
@@ -588,16 +519,11 @@
 <body>
   <!-- Copy and paste HTML after this comment into code block, as well as CSS above and script element below. -->
   <div id="viz">
-    <h1 id="map-title">ERA Landscape in the United States</h1>
+    <h1 id="map-title">Sex Equality Now: State Constitutions and Equal Rights Amendments</h1>
     <div id="filters">
-      <div class="filter-group" role="group" aria-label="States with Equal Rights Amendments (ERA)">
-        <div class="filter-group-toggle filter-group-toggle--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></div>
-        <div class="filter-group-buttons">
-          <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
-          <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
-          <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
-        </div>
-      </div>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
       <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
       <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
     </div>
@@ -630,7 +556,7 @@
         <label for="federal-ratification-toggle">
           <input type="checkbox" id="federal-ratification-toggle" />
           <span class="toggle-track" aria-hidden="true"></span>
-          States with Federal Ratification
+          Federal ERA Ratifications
         </label>
       </div>
     </div>

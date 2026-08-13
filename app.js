@@ -26,7 +26,7 @@ const ERA_TYPES = [
 ];
 
 // Ltd/Full/Expanded are unified around #209f57: Ltd = striped, Full = solid, Expanded = navy→dark green gradient
-const ERA_COLORS = ["#c4c4c4", "#E36A93", "ltd-stripes", "#209f57", "expanded-gradient"];
+const ERA_COLORS = ["#c4c4c4", "#E36A93", "ltd-stripes", "#018a31", "expanded-gradient"];
 
 const EXPANDED_GRADIENT_SENTINEL = "expanded-gradient";
 const EXPANDED_GRADIENT_ID = "expanded-gradient";
@@ -44,20 +44,15 @@ const EXPANDED_CSS_GRADIENT = `linear-gradient(90deg, ${EXPANDED_GRADIENT_STOPS.
 
 const LTD_STRIPES_SENTINEL = "ltd-stripes";
 const LTD_STRIPES_ID = "ltd-stripes";
-const LTD_STRIPES_COLOR = "#209f57";
+const LTD_STRIPES_COLOR = "#018a31";
 const LTD_STRIPES_BG_COLOR = "#c4c4c4"; // Matches the "No State ERA" grey.
-const LTD_STRIPES_WIDTH = 5;
+const LTD_STRIPES_WIDTH = 3;
+const LTD_STRIPES_GAP = 6;
+const LTD_STRIPES_PERIOD = LTD_STRIPES_WIDTH + LTD_STRIPES_GAP;
 const LTD_STRIPES_ANGLE = 45;
-const LTD_STRIPES_CSS_PATTERN = `repeating-linear-gradient(${LTD_STRIPES_ANGLE}deg, ${LTD_STRIPES_COLOR} 0, ${LTD_STRIPES_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH * 2}px)`;
+const LTD_STRIPES_CSS_PATTERN = `repeating-linear-gradient(${LTD_STRIPES_ANGLE}deg, ${LTD_STRIPES_COLOR} 0, ${LTD_STRIPES_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_WIDTH}px, ${LTD_STRIPES_BG_COLOR} ${LTD_STRIPES_PERIOD}px)`;
 
-const ERA_PROTECTION_TYPES = [
-  "Limited ERA",
-  "Full State ERA",
-  "Expanded ERA"
-];
-const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
-const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
-const FILTER_GROUP_LABEL = "States with Equal Rights Amendments (ERA)";
+const FILTER_ORDER = [...ERA_TYPES].reverse();
 
 // Sheet column for place name (states + territories). Older exports used "State".
 const PLACE_NAME_KEY = "State & Territory";
@@ -66,6 +61,15 @@ const PLACE_NAME_ALIASES = {
   "U.S. Virgin Islands": "United States Virgin Islands",
   "Northern Mariana Islands": "Commonwealth of the Northern Mariana Islands"
 };
+// The five inhabited territories; excluded from filter category counts
+// (those counts are states-only). Names match the sheet "State & Territory" column.
+const TERRITORY_NAMES = new Set([
+  "American Samoa",
+  "Guam",
+  "Northern Mariana Islands",
+  "Puerto Rico",
+  "U.S. Virgin Islands"
+]);
 
 const color = d3.scaleOrdinal()
   .domain(ERA_TYPES)
@@ -148,9 +152,15 @@ function loadSheetData() {
   });
 }
 
+function isTerritory(row) {
+  const name = getPlaceName(row);
+  return !!(name && TERRITORY_NAMES.has(name));
+}
+
 function countByCategory(stateData) {
   const counts = Object.fromEntries(ERA_TYPES.map(t => [t, 0]));
   stateData.forEach(d => {
+    if (isTerritory(d)) return;
     const type = d["State ERA type"];
     if (type in counts) counts[type] += 1;
   });
@@ -482,18 +492,18 @@ function renderMap(us) {
     .append("pattern")
     .attr("id", LTD_STRIPES_ID)
     .attr("patternUnits", "userSpaceOnUse")
-    .attr("width", LTD_STRIPES_WIDTH * 2)
-    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("width", LTD_STRIPES_PERIOD)
+    .attr("height", LTD_STRIPES_PERIOD)
     .attr("patternTransform", `rotate(${LTD_STRIPES_ANGLE - 90})`);
 
   stripes.append("rect")
-    .attr("width", LTD_STRIPES_WIDTH * 2)
-    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("width", LTD_STRIPES_PERIOD)
+    .attr("height", LTD_STRIPES_PERIOD)
     .attr("fill", LTD_STRIPES_BG_COLOR);
 
   stripes.append("rect")
     .attr("width", LTD_STRIPES_WIDTH)
-    .attr("height", LTD_STRIPES_WIDTH * 2)
+    .attr("height", LTD_STRIPES_PERIOD)
     .attr("fill", LTD_STRIPES_COLOR);
 
   const mapLayer = svg.append("g").attr("class", "map-layer");
@@ -569,6 +579,9 @@ function setPaneContent(selection, html, emptyMessage) {
   // Newlines are preserved via .state-panel-pane { white-space: pre-line }.
   if (html) {
     selection.html(html);
+    selection.selectAll("a")
+      .attr("target", "_blank")
+      .attr("rel", "noopener noreferrer");
   } else {
     selection.html("").append("em").attr("class", "empty").text(emptyMessage);
   }
@@ -703,42 +716,16 @@ function bindFilterButtons(selection, counts, refresh) {
 function renderFilters(counts, statePaths, lookup) {
   const root = d3.select("#filters");
 
-  let group = root.select(".filter-group");
-  if (group.empty()) {
-    group = root.insert("div", ":first-child")
-      .attr("class", "filter-group")
-      .attr("role", "group")
-      .attr("aria-label", FILTER_GROUP_LABEL);
-    group.append("div")
-      .attr("class", "filter-group-toggle")
-      .attr("aria-hidden", "true");
-    group.append("div").attr("class", "filter-group-buttons");
-  }
-
-  const protectionTotal = ERA_PROTECTION_TYPES.reduce((sum, t) => sum + (counts[t] || 0), 0);
-  group.select(".filter-group-toggle")
-    .classed("filter-group-toggle--placeholder", false)
-    .html(`
-      <span class="label">${FILTER_GROUP_LABEL}</span>
-      <span class="count">${protectionTotal}</span>
-    `);
-
   const refresh = () => {
     root.selectAll("button.filter-btn")
       .classed("active", d => activeFilters.has(d));
     updateMapOpacity(statePaths, lookup);
   };
 
-  const protectionButtons = group.select(".filter-group-buttons")
-    .selectAll("button.filter-btn")
-    .data(PROTECTION_FILTER_ORDER)
+  const buttons = root.selectAll("button.filter-btn")
+    .data(FILTER_ORDER)
     .join("button");
-  bindFilterButtons(protectionButtons, counts, refresh);
-
-  const outerButtons = root.selectAll(":scope > button.filter-btn")
-    .data(OUTER_FILTER_ORDER)
-    .join("button");
-  bindFilterButtons(outerButtons, counts, refresh);
+  bindFilterButtons(buttons, counts, refresh);
 
   refresh();
 }

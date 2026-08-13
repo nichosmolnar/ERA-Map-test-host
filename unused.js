@@ -1,10 +1,180 @@
 /**
- * Archived: color palette switcher + alternate palette options.
- * Not loaded by the live map — kept here for reference / possible restore.
+ * Archived snippets. Not loaded by the live map — kept for reference / restore.
  *
  * Note: the Federal Ratification toggle previously archived here has been
  * restored into app.js / index.html.
  */
+
+/* ==========================================================================
+ * Hover-split ERA filter group
+ * Unified "States with Equal Rights Amendments (ERA)" bar that split into
+ * Limited / Full / Expanded filter buttons on hover.
+ * ========================================================================== */
+
+const ERA_PROTECTION_TYPES = [
+  "Limited ERA",
+  "Full State ERA",
+  "Expanded ERA"
+];
+const PROTECTION_FILTER_ORDER = [...ERA_PROTECTION_TYPES].reverse();
+const OUTER_FILTER_ORDER = ["Ongoing Campaign", "No State ERA"];
+const FILTER_GROUP_LABEL = "States with Equal Rights Amendments (ERA)";
+
+function renderFiltersWithSplitGroup(counts, statePaths, lookup) {
+  const root = d3.select("#filters");
+
+  let group = root.select(".filter-group");
+  if (group.empty()) {
+    group = root.insert("div", ":first-child")
+      .attr("class", "filter-group")
+      .attr("role", "group")
+      .attr("aria-label", FILTER_GROUP_LABEL);
+    group.append("div")
+      .attr("class", "filter-group-toggle")
+      .attr("aria-hidden", "true");
+    group.append("div").attr("class", "filter-group-buttons");
+  }
+
+  const protectionTotal = ERA_PROTECTION_TYPES.reduce((sum, t) => sum + (counts[t] || 0), 0);
+  group.select(".filter-group-toggle")
+    .classed("filter-group-toggle--placeholder", false)
+    .html(`
+      <span class="label">${FILTER_GROUP_LABEL}</span>
+      <span class="count">${protectionTotal}</span>
+    `);
+
+  const refresh = () => {
+    root.selectAll("button.filter-btn")
+      .classed("active", d => activeFilters.has(d));
+    updateMapOpacity(statePaths, lookup);
+  };
+
+  const protectionButtons = group.select(".filter-group-buttons")
+    .selectAll("button.filter-btn")
+    .data(PROTECTION_FILTER_ORDER)
+    .join("button");
+  bindFilterButtons(protectionButtons, counts, refresh);
+
+  const outerButtons = root.selectAll(":scope > button.filter-btn")
+    .data(OUTER_FILTER_ORDER)
+    .join("button");
+  bindFilterButtons(outerButtons, counts, refresh);
+
+  refresh();
+}
+
+/* --- HTML (place inside #filters) ---
+<div class="filter-group" role="group" aria-label="States with Equal Rights Amendments (ERA)">
+  <div class="filter-group-toggle filter-group-toggle--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></div>
+  <div class="filter-group-buttons">
+    <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+    <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+    <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
+  </div>
+</div>
+--- */
+
+/* --- CSS ---
+.filter-group {
+  position: relative;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.filter-group-toggle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid #000;
+  background: #209f57;
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  text-align: left;
+  pointer-events: none;
+  opacity: 1;
+  transform: scaleX(1);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1;
+}
+
+.filter-group-toggle .label {
+  min-width: 0;
+}
+
+.filter-group-toggle .count {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75em;
+  height: 1.75em;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.filter-group-toggle--placeholder {
+  background: #ebebeb;
+  color: #222;
+  border-color: transparent;
+}
+
+.filter-group-toggle--placeholder .count {
+  background: #ccc;
+  color: #ccc;
+}
+
+.filter-group-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: stretch;
+  opacity: 0;
+  transform: scaleX(0.96);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.filter-group:not(:has(.filter-group-toggle--placeholder)):hover .filter-group-toggle,
+.filter-group:not(:has(.filter-group-toggle--placeholder)):focus-within .filter-group-toggle {
+  opacity: 0;
+  transform: scaleX(0.96);
+}
+
+.filter-group:not(:has(.filter-group-toggle--placeholder)):hover .filter-group-buttons,
+.filter-group:not(:has(.filter-group-toggle--placeholder)):focus-within .filter-group-buttons {
+  opacity: 1;
+  transform: scaleX(1);
+  pointer-events: auto;
+}
+
+@media (max-width: 700px) {
+  .filter-group {
+    width: 100%;
+  }
+
+  .filter-group-buttons {
+    flex-direction: column;
+  }
+}
+--- */
+
+/* ==========================================================================
+ * Color palette switcher + alternate palette options
+ * ========================================================================== */
 
 /* --- HTML (place inside #map-controls, right side) ---
 <div id="palette-selector">
