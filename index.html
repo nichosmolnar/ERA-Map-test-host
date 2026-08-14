@@ -84,6 +84,9 @@
       -webkit-mask:
         linear-gradient(#fff 0 0) content-box,
         linear-gradient(#fff 0 0);
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
       pointer-events: none;
@@ -241,6 +244,7 @@
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 4;
+      line-clamp: 4;
       max-height: calc(var(--font-size-base) * 1.4 * 4);
       flex: 0 0 auto;
     }
