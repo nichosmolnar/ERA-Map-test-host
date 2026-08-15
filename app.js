@@ -21,26 +21,14 @@ const ERA_TYPES = [
   "No State ERA",
   "Ongoing Campaign",
   "Limited ERA",
-  "Full State ERA",
-  "Expanded ERA"
+  "State ERA"
 ];
 
-// Ltd/Full/Expanded are unified around #209f57: Ltd = striped, Full = solid, Expanded = navy→dark green gradient
-const ERA_COLORS = ["#c4c4c4", "#E36A93", "ltd-stripes", "#018a31", "expanded-gradient"];
+// Limited = striped green; State ERA = solid green
+const ERA_COLORS = ["#c4c4c4", "#E36A93", "ltd-stripes", "#018a31"];
 
-const EXPANDED_GRADIENT_SENTINEL = "expanded-gradient";
-const EXPANDED_GRADIENT_ID = "expanded-gradient";
-const EXPANDED_GRADIENT_STOPS = [
-  { offset: "0%", color: "#2f3a72" },
-  { offset: "14.286%", color: "#004982" },
-  { offset: "28.571%", color: "#00578a" },
-  { offset: "42.857%", color: "#006488" },
-  { offset: "57.143%", color: "#00707d" },
-  { offset: "71.429%", color: "#007a69" },
-  { offset: "85.714%", color: "#00834f" },
-  { offset: "100%", color: "#018a31" }
-];
-const EXPANDED_CSS_GRADIENT = `linear-gradient(90deg, ${EXPANDED_GRADIENT_STOPS.map(s => s.color).join(", ")})`;
+const INCLUSIVE_INDICATOR_KEY = "Inclusive Indicator (NY & NV)";
+const INCLUSIVE_ERA_LABEL = "Inclusive ERA";
 
 const LTD_STRIPES_SENTINEL = "ltd-stripes";
 const LTD_STRIPES_ID = "ltd-stripes";
@@ -168,7 +156,7 @@ function countByCategory(stateData) {
 }
 
 function textColor(hex) {
-  // Expanded gradient is dark throughout, so use light text on it.
+  // Non-hex fills (e.g. stripe patterns) use light text.
   if (!hex || !hex.startsWith("#")) return "#fff";
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -197,12 +185,13 @@ function getEraType(row) {
   return row ? row["State ERA type"] : null;
 }
 
-function isFederallyRatified(row) {
-  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
+function getInclusiveEraLabel(row) {
+  const value = row ? (row[INCLUSIVE_INDICATOR_KEY] || "").trim() : "";
+  return value === INCLUSIVE_ERA_LABEL ? INCLUSIVE_ERA_LABEL : "";
 }
 
-function isExpandedGradient(value) {
-  return value === EXPANDED_GRADIENT_SENTINEL;
+function isFederallyRatified(row) {
+  return row && row["Federal Ratification Status"] === RATIFIED_STATUS;
 }
 
 function isLtdStripes(value) {
@@ -211,17 +200,12 @@ function isLtdStripes(value) {
 
 function svgFill(era) {
   const value = color(era);
-  if (isExpandedGradient(value)) return `url(#${EXPANDED_GRADIENT_ID})`;
   if (isLtdStripes(value)) return `url(#${LTD_STRIPES_ID})`;
   return value;
 }
 
 function applySwatchBackground(selection, value) {
-  if (isExpandedGradient(value)) {
-    selection
-      .style("background-color", null)
-      .style("background-image", EXPANDED_CSS_GRADIENT);
-  } else if (isLtdStripes(value)) {
+  if (isLtdStripes(value)) {
     selection
       .style("background-color", null)
       .style("background-image", LTD_STRIPES_CSS_PATTERN);
@@ -233,9 +217,7 @@ function applySwatchBackground(selection, value) {
 }
 
 function applyFilterButtonColor(selection, value) {
-  let fill = value;
-  if (isExpandedGradient(value)) fill = EXPANDED_CSS_GRADIENT;
-  else if (isLtdStripes(value)) fill = LTD_STRIPES_CSS_PATTERN;
+  const fill = isLtdStripes(value) ? LTD_STRIPES_CSS_PATTERN : value;
   selection
     .style("--btn-fill", fill)
     .style("--btn-on-fill-text", textColor(value))
@@ -470,25 +452,11 @@ function renderMap(us) {
     .append("svg")
     .attr("viewBox", [0, 0, MAP_WIDTH, MAP_HEIGHT]);
 
-  const gradient = svg.append("defs")
-    .append("linearGradient")
-    .attr("id", EXPANDED_GRADIENT_ID)
-    .attr("x1", "0%")
-    .attr("y1", "0%")
-    .attr("x2", "100%")
-    .attr("y2", "0%");
-
-  gradient.selectAll("stop")
-    .data(EXPANDED_GRADIENT_STOPS)
-    .join("stop")
-    .attr("offset", d => d.offset)
-    .attr("stop-color", d => d.color);
-
   // The pattern's un-rotated stripes run vertically, matching CSS's
   // repeating-linear-gradient(90deg, ...) used for the buttons/swatch.
   // Subtracting 90 from LTD_STRIPES_ANGLE keeps this pattern's tilt in sync
   // with that CSS angle (they use opposite rotation conventions).
-  const stripes = svg.select("defs")
+  const stripes = svg.append("defs")
     .append("pattern")
     .attr("id", LTD_STRIPES_ID)
     .attr("patternUnits", "userSpaceOnUse")
@@ -607,6 +575,7 @@ function showStatePanel(row) {
 
   panel.select(".state-panel-name").text(getPlaceName(row) || "");
   panel.select(".state-panel-status").text(era || "Unknown");
+  panel.select(".state-panel-inclusive").html(`<i>${getInclusiveEraLabel(row)}</i>`);
   applySwatchBackground(panel.select(".state-panel-swatch"), color(era));
 
   setPaneContent(
@@ -640,6 +609,7 @@ function clearStatePanel() {
   const panel = d3.select("#state-panel");
   panel.select(".state-panel-name").text("");
   panel.select(".state-panel-status").text("");
+  panel.select(".state-panel-inclusive").text("");
   panel.select(".state-panel-swatch")
     .style("background-color", null)
     .style("background-image", null);

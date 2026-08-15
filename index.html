@@ -324,6 +324,11 @@
       flex-shrink: 0;
     }
 
+    .state-panel-inclusive:not(:empty)::before {
+      content: "·";
+      margin-right: 8px;
+    }
+
     .state-panel-tabs {
       display: flex;
       border-bottom: 1px solid #000;
@@ -529,7 +534,6 @@
       <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
       <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
       <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
-      <button type="button" class="filter-btn filter-btn--placeholder" aria-hidden="true"><span class="label">&nbsp;</span><span class="count">&nbsp;</span></button>
     </div>
     <div id="map-frame">
       <div id="map-loading">Map loading</div>
@@ -541,6 +545,7 @@
           <div class="state-panel-category">
             <span class="state-panel-swatch"></span>
             <span class="state-panel-status"></span>
+            <span class="state-panel-inclusive"></span>
           </div>
         </div>
         <div class="state-panel-tabs">
